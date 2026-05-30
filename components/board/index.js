@@ -118,6 +118,9 @@ Component({
 
       // 重绘已有棋子
       this._drawAllPieces();
+
+      // 标记最后一步
+      this._drawLastMoveMark();
     },
 
     /**
@@ -132,6 +135,25 @@ Component({
           }
         }
       }
+    },
+
+    /**
+     * 在最后落子位置画红色标记点
+     */
+    _drawLastMoveMark() {
+      if (this._history.length === 0) return;
+
+      const ctx = this._ctx;
+      const { padding, cellSize } = this._config;
+      const last = this._history[this._history.length - 1];
+
+      const x = padding + last.col * cellSize;
+      const y = padding + last.row * cellSize;
+
+      ctx.beginPath();
+      ctx.arc(x, y, cellSize * 0.12, 0, Math.PI * 2);
+      ctx.fillStyle = '#e74c3c';
+      ctx.fill();
     },
 
     /**
@@ -185,6 +207,9 @@ Component({
 
       // 记录到历史
       this._history.push({ row, col, piece });
+
+      // 标记最后一步（清除旧标记，画新标记）
+      this._drawLastMoveMark();
 
       // 检测胜负
       const isWin = board.checkWin(this._boardState, row, col, piece);
