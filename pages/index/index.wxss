@@ -91,4 +91,5 @@
 .version-text {
   font-size: 24rpx;
   color: #555;
+  letter-spacing: 2rpx;
 }

@@ -40,6 +40,12 @@ Component({
       this._boardState = board.createBoard();
       this._initCanvas();
     },
+    detached() {
+      this._ctx = null;
+      this._boardState = null;
+      this._config = null;
+      this._history = [];
+    },
   },
 
   methods: {
