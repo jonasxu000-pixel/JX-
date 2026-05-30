@@ -29,6 +29,9 @@ Component({
   // 棋盘数据
   _boardState: null,
 
+  // 落子历史记录
+  _history: [],
+
   // Canvas 上下文
   _ctx: null,
 
@@ -180,6 +183,9 @@ Component({
       this._boardState[row][col] = piece;
       this._drawPiece(row, col, piece);
 
+      // 记录到历史
+      this._history.push({ row, col, piece });
+
       // 检测胜负
       const isWin = board.checkWin(this._boardState, row, col, piece);
       if (isWin) {
@@ -192,10 +198,35 @@ Component({
     },
 
     /**
+     * 悔棋：撤销上一步落子
+     * @returns {object|null} 被撤销的落子信息 {row, col, piece}，无棋可悔返回null
+     */
+    undo() {
+      if (this._history.length === 0) return null;
+      if (this.data.locked) return null;
+
+      const last = this._history.pop();
+      this._boardState[last.row][last.col] = board.EMPTY;
+
+      // 重绘整个棋盘（避免Canvas擦除不干净）
+      this._drawBoard(this.data.canvasWidth);
+
+      return last;
+    },
+
+    /**
+     * 是否可以悔棋
+     */
+    canUndo() {
+      return this._history.length > 0;
+    },
+
+    /**
      * 重置棋盘
      */
     resetBoard() {
       this._boardState = board.createBoard();
+      this._history = [];
       this.setData({ locked: false });
       this._drawBoard(this.data.canvasWidth);
     },

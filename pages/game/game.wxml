@@ -17,6 +17,7 @@
 
   <!-- 操作栏 -->
   <view class="action-bar">
+    <button class="action-btn undo-btn" bindtap="_onUndo">悔棋</button>
     <button class="action-btn restart-btn" bindtap="_onRestart">重新开始</button>
   </view>
 </view>

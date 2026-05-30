@@ -58,6 +58,30 @@ Page({
   },
 
   /**
+   * 悔棋
+   */
+  _onUndo() {
+    if (!this._boardComp || !this._boardComp.canUndo()) return;
+
+    wx.showModal({
+      title: '悔棋',
+      content: '确定要悔棋吗？',
+      success: (res) => {
+        if (!res.confirm) return;
+
+        const last = this._boardComp.undo();
+        if (!last) return;
+
+        // 玩家回退到上一步的执棋方
+        this.setData({
+          currentPlayer: last.piece,
+          statusText: `${board.pieceName(last.piece)}落子`,
+        });
+      },
+    });
+  },
+
+  /**
    * 重新开始
    */
   _onRestart() {
