@@ -1,7 +1,10 @@
 {
   "pages": [
     "pages/index/index",
-    "pages/game/game"
+    "pages/game/game",
+    "pages/room/create",
+    "pages/room/join",
+    "pages/room/wait"
   ],
   "window": {
     "navigationBarBackgroundColor": "#1a1a2e",

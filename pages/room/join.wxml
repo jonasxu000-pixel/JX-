@@ -1,0 +1,44 @@
+<!--pages/room/join.wxml - 加入房间页面-->
+<view class="container">
+  <view class="content">
+    <view class="icon-wrapper">
+      <view class="join-icon"></view>
+    </view>
+    <text class="title">加入房间</text>
+    <text class="desc">输入好友分享的房间号</text>
+
+    <view class="input-card">
+      <text class="input-label">房间号</text>
+      <input
+        class="room-input"
+        type="number"
+        maxlength="6"
+        placeholder="请输入6位房间号"
+        placeholder-class="placeholder"
+        value="{{inputRoomId}}"
+        bindinput="onInputRoomId"
+      />
+      <!-- 房间号显示分隔线 -->
+      <view class="input-divider"></view>
+      <view class="input-display">
+        <text class="display-chars">
+          <text class="char {{inputRoomId.length >= i ? 'filled' : ''}}" wx:for="{{[1,2,3,4,5,6]}" wx:key="*this">
+            {{inputRoomId.length >= index ? inputRoomId[index] : ''}}
+          </text>
+        </text>
+      </view>
+    </view>
+
+    <button
+      class="btn {{inputRoomId.length === 6 ? 'btn-primary' : 'btn-disabled'}}"
+      bindtap="onJoinRoom"
+      disabled="{{inputRoomId.length !== 6}}"
+    >
+      <text class="btn-text">加入房间</text>
+    </button>
+  </view>
+
+  <button class="btn btn-back" bindtap="onBack">
+    <text class="btn-back-text">返回</text>
+  </button>
+</view>

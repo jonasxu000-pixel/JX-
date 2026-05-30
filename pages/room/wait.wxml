@@ -1,0 +1,30 @@
+<!--pages/room/wait.wxml - 房间等待页面-->
+<view class="container">
+  <view class="content">
+    <!-- 房间号展示 -->
+    <view class="room-card" bindtap="onCopyRoomId">
+      <text class="room-label">{{role === 'host' ? '你的房间号' : '正在加入房间'}}</text>
+      <text class="room-value">{{roomId}}</text>
+      <text class="room-hint" wx:if="{{role === 'host'}}">点击复制</text>
+    </view>
+
+    <!-- 等待动画 -->
+    <view class="wait-area" wx:if="{{waiting}}">
+      <view class="wait-icon"></view>
+      <text class="wait-text">等待对手加入...</text>
+      <!-- 临时按钮：模拟加入 -->
+      <button class="btn-simulate" bindtap="onSimulateJoin">
+        <text class="simulate-text">模拟加入（调试用）</text>
+      </button>
+    </view>
+
+    <!-- 对手已加入 -->
+    <view class="joined-area" wx:if="{{!waiting}}">
+      <text class="joined-text">对手已加入，开始对战！</text>
+    </view>
+  </view>
+
+  <button class="btn btn-back" bindtap="onBack">
+    <text class="btn-back-text">返回</text>
+  </button>
+</view>

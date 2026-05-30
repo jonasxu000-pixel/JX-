@@ -1,0 +1,129 @@
+/* pages/room/wait.wxss - 房间等待页面样式 */
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+  background: linear-gradient(160deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+  padding: 0 40rpx;
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  margin-top: 100rpx;
+}
+
+/* 房间号卡片 */
+.room-card {
+  width: 85%;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 24rpx;
+  padding: 40rpx 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 80rpx;
+  backdrop-filter: blur(10rpx);
+}
+
+.room-label {
+  font-size: 28rpx;
+  color: #a0a0b0;
+  margin-bottom: 16rpx;
+}
+
+.room-value {
+  font-size: 72rpx;
+  font-weight: bold;
+  color: #4a90d9;
+  letter-spacing: 12rpx;
+  font-family: 'Courier New', monospace;
+}
+
+.room-hint {
+  font-size: 24rpx;
+  color: #666;
+  margin-top: 16rpx;
+}
+
+/* 等待区域 */
+.wait-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 30rpx;
+}
+
+.wait-icon {
+  width: 80rpx;
+  height: 80rpx;
+  border: 6rpx solid #4a90d9;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.wait-text {
+  font-size: 32rpx;
+  color: #a0a0b0;
+}
+
+.btn-simulate {
+  margin-top: 40rpx;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 32rpx;
+  padding: 16rpx 40rpx;
+}
+
+.simulate-text {
+  font-size: 24rpx;
+  color: #666;
+}
+
+/* 已加入区域 */
+.joined-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.joined-text {
+  font-size: 36rpx;
+  font-weight: 600;
+  color: #50c878;
+}
+
+/* 按钮 */
+.btn {
+  width: 100%;
+  height: 96rpx;
+  border-radius: 48rpx;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: auto;
+  margin-bottom: 60rpx;
+}
+
+.btn::after {
+  border: none;
+}
+
+.btn-back {
+  background: transparent;
+}
+
+.btn-back-text {
+  font-size: 28rpx;
+  color: #888;
+}

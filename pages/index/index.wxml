@@ -13,12 +13,18 @@
   <!-- 功能按钮 -->
   <view class="action-section">
     <button class="btn btn-primary" bindtap="onStartGame">
-      <text class="btn-text">开始游戏</text>
+      <text class="btn-text">单机对战</text>
+    </button>
+    <button class="btn btn-secondary" bindtap="onCreateRoom">
+      <text class="btn-text">创建房间</text>
+    </button>
+    <button class="btn btn-tertiary" bindtap="onJoinRoom">
+      <text class="btn-text">加入房间</text>
     </button>
   </view>
 
   <!-- 底部信息 -->
   <view class="footer">
-    <text class="version-text">v1.0.0</text>
+    <text class="version-text">v1.0</text>
   </view>
 </view>

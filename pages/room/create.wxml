@@ -1,0 +1,36 @@
+<!--pages/room/create.wxml - 创建房间页面-->
+<view class="container">
+  <!-- 未创建状态 -->
+  <view class="content {{created ? 'hidden' : ''}}">
+    <view class="icon-wrapper">
+      <view class="room-icon"></view>
+    </view>
+    <text class="title">创建房间</text>
+    <text class="desc">创建专属对战房间</text>
+
+    <button class="btn btn-primary" bindtap="onCreateRoom">
+      <text class="btn-text">立即创建</text>
+    </button>
+  </view>
+
+  <!-- 已创建状态 -->
+  <view class="content {{created ? '' : 'hidden'}}">
+    <text class="title-small">房间已创建</text>
+    <text class="desc">将房间号分享给好友即可加入</text>
+
+    <view class="room-id-card" bindtap="onCopyRoomId">
+      <text class="room-id-label">房间号</text>
+      <text class="room-id-value">{{roomId}}</text>
+      <text class="room-id-hint">点击复制</text>
+    </view>
+
+    <button class="btn btn-primary" bindtap="onEnterWait">
+      <text class="btn-text">进入房间</text>
+    </button>
+  </view>
+
+  <!-- 底部操作 -->
+  <button class="btn btn-back" bindtap="onBack">
+    <text class="btn-back-text">返回</text>
+  </button>
+</view>
