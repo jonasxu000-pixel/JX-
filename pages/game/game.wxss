@@ -4,18 +4,58 @@
   flex-direction: column;
   align-items: center;
   min-height: 100vh;
-  background-color: #f5f5f5;
+  background: linear-gradient(180deg, #f0f0f5 0%, #e8e8f0 100%);
+  padding-bottom: 40rpx;
 }
 
+/* 状态栏 */
 .status-bar {
-  width: 100%;
   display: flex;
+  align-items: center;
   justify-content: center;
-  padding: 30rpx 0 10rpx;
+  padding: 30rpx 0 16rpx;
+  gap: 16rpx;
+}
+
+.player-indicator {
+  width: 28rpx;
+  height: 28rpx;
+  border-radius: 50%;
+  border: 3rpx solid #999;
+}
+
+.player-indicator.black {
+  background: radial-gradient(circle at 35% 35%, #666, #222);
+  border-color: #444;
+}
+
+.player-indicator.white {
+  background: radial-gradient(circle at 35% 35%, #fff, #ccc);
+  border-color: #bbb;
 }
 
 .status-text {
-  font-size: 32rpx;
-  font-weight: bold;
+  font-size: 34rpx;
+  font-weight: 600;
   color: #333;
+}
+
+/* 操作栏 */
+.action-bar {
+  width: 80%;
+  margin-top: 30rpx;
+}
+
+.restart-btn {
+  background-color: #4a90d9;
+  color: #fff;
+  border-radius: 48rpx;
+  font-size: 32rpx;
+  height: 80rpx;
+  line-height: 80rpx;
+  border: none;
+}
+
+.restart-btn::after {
+  border: none;
 }

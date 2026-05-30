@@ -50,6 +50,54 @@ function pieceName(piece) {
   return '';
 }
 
+/**
+ * 五连检测：从落子位置向四个方向检查是否形成连续5子
+ * @param {number[][]} board - 棋盘状态
+ * @param {number} row - 落子行
+ * @param {number} col - 落子列
+ * @param {number} piece - 棋子类型 (BLACK/WHITE)
+ * @returns {boolean} true=获胜
+ */
+function checkWin(board, row, col, piece) {
+  // 4个检测方向：[行增量, 列增量]
+  const directions = [
+    [0, 1],   // 水平
+    [1, 0],   // 垂直
+    [1, 1],   // 对角线
+    [1, -1],  // 反对角线
+  ];
+
+  for (const [dr, dc] of directions) {
+    let count = 1; // 当前落子算1个
+
+    // 正向计数
+    for (let i = 1; i < 5; i++) {
+      const r = row + dr * i;
+      const c = col + dc * i;
+      if (isValidPos(r, c) && board[r][c] === piece) {
+        count++;
+      } else {
+        break;
+      }
+    }
+
+    // 反向计数
+    for (let i = 1; i < 5; i++) {
+      const r = row - dr * i;
+      const c = col - dc * i;
+      if (isValidPos(r, c) && board[r][c] === piece) {
+        count++;
+      } else {
+        break;
+      }
+    }
+
+    if (count >= 5) return true;
+  }
+
+  return false;
+}
+
 module.exports = {
   BOARD_SIZE,
   EMPTY,
@@ -59,4 +107,5 @@ module.exports = {
   isValidPos,
   pxToGrid,
   pieceName,
+  checkWin,
 };

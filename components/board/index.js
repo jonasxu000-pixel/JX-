@@ -6,7 +6,18 @@
 const board = require('../../utils/board');
 
 Component({
-  properties: {},
+  properties: {
+    // 当前玩家棋子类型，由父组件传入
+    currentPlayer: {
+      type: Number,
+      value: board.BLACK,
+    },
+    // 棋盘是否锁定（胜负已分后锁定）
+    locked: {
+      type: Boolean,
+      value: false,
+    },
+  },
 
   data: {
     canvasWidth: 0,
@@ -153,6 +164,8 @@ Component({
      * 处理 Canvas 点击事件
      */
     _onTap(e) {
+      if (this.data.locked) return;
+
       const { x, y } = e.detail;
       const grid = board.pxToGrid(x, y, this._config);
 
@@ -161,12 +174,21 @@ Component({
       const { row, col } = grid;
       if (this._boardState[row][col] !== board.EMPTY) return;
 
-      // 落子
-      this._boardState[row][col] = board.BLACK;
-      this._drawPiece(row, col, board.BLACK);
+      const piece = this.data.currentPlayer;
 
-      // 通知父组件
-      this.triggerEvent('onPlace', { row, col, piece: board.BLACK });
+      // 落子
+      this._boardState[row][col] = piece;
+      this._drawPiece(row, col, piece);
+
+      // 检测胜负
+      const isWin = board.checkWin(this._boardState, row, col, piece);
+      if (isWin) {
+        this.setData({ locked: true });
+        this.triggerEvent('onWin', { row, col, piece });
+      } else {
+        // 通知父组件切换玩家
+        this.triggerEvent('onPlace', { row, col, piece });
+      }
     },
 
     /**
@@ -174,6 +196,7 @@ Component({
      */
     resetBoard() {
       this._boardState = board.createBoard();
+      this.setData({ locked: false });
       this._drawBoard(this.data.canvasWidth);
     },
 

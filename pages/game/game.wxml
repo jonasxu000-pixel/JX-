@@ -1,8 +1,22 @@
 <!--pages/game/game.wxml - 游戏页面-->
 <view class="container">
+  <!-- 状态栏 -->
   <view class="status-bar">
+    <view class="player-indicator {{currentPlayer === board.BLACK ? 'black' : 'white'}}"></view>
     <text class="status-text">{{statusText}}</text>
   </view>
 
-  <board id="board" bind:onPlace="_onPiecePlaced" />
+  <!-- 棋盘 -->
+  <board
+    id="board"
+    currentPlayer="{{currentPlayer}}"
+    locked="{{gameOver}}"
+    bind:onPlace="_onPiecePlaced"
+    bind:onWin="_onWin"
+  />
+
+  <!-- 操作栏 -->
+  <view class="action-bar">
+    <button class="action-btn restart-btn" bindtap="_onRestart">重新开始</button>
+  </view>
 </view>
