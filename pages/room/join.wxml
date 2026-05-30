@@ -18,12 +18,10 @@
         value="{{inputRoomId}}"
         bindinput="onInputRoomId"
       />
-      <!-- 房间号显示分隔线 -->
-      <view class="input-divider"></view>
       <view class="input-display">
         <text class="display-chars">
-          <text class="char {{inputRoomId.length >= i ? 'filled' : ''}}" wx:for="{{[1,2,3,4,5,6]}" wx:key="*this">
-            {{inputRoomId.length >= index ? inputRoomId[index] : ''}}
+          <text class="char {{inputRoomId.length > index ? 'filled' : ''}}" wx:for="{{[1,2,3,4,5,6]}}" wx:key="*this">
+            {{inputRoomId[index] || ''}}
           </text>
         </text>
       </view>

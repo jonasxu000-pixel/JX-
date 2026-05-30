@@ -87,18 +87,21 @@
   margin-bottom: 20rpx;
 }
 
+/* 隐藏原生输入框，用下方字符显示替代 */
 .room-input {
-  position: absolute;
-  opacity: 0;
-  width: 200rpx;
-  height: 60rpx;
+  position: fixed;
+  top: -1000rpx;
+  left: -1000rpx;
+  width: 300rpx;
+  height: 80rpx;
 }
 
+/* 6位数字显示格子 */
 .input-display {
   display: flex;
   justify-content: center;
   gap: 16rpx;
-  margin-top: 16rpx;
+  padding: 16rpx 0;
 }
 
 .char {
@@ -109,13 +112,16 @@
   justify-content: center;
   font-size: 48rpx;
   font-weight: bold;
-  color: #4a90d9;
-  border-bottom: 4rpx solid #333;
+  color: #333;
+  border: 3rpx solid #333;
+  border-radius: 12rpx;
+  background: rgba(255, 255, 255, 0.05);
   font-family: 'Courier New', monospace;
 }
 
 .char.filled {
-  border-bottom-color: #4a90d9;
+  border-color: #50c878;
+  background: rgba(80, 200, 120, 0.15);
   color: #fff;
 }
 
