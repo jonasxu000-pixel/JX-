@@ -13,7 +13,27 @@
   flex-direction: column;
   align-items: center;
   width: 100%;
-  margin-top: 100rpx;
+  margin-top: 80rpx;
+}
+
+/* 身份标签 */
+.role-badge {
+  padding: 12rpx 32rpx;
+  border-radius: 32rpx;
+  margin-bottom: 40rpx;
+}
+
+.role-badge.host {
+  background: rgba(74, 144, 217, 0.2);
+}
+
+.role-badge.guest {
+  background: rgba(80, 200, 120, 0.2);
+}
+
+.role-text {
+  font-size: 26rpx;
+  color: #a0a0b0;
 }
 
 /* 房间号卡片 */
@@ -25,14 +45,14 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin-bottom: 80rpx;
+  margin-bottom: 60rpx;
   backdrop-filter: blur(10rpx);
 }
 
 .room-label {
-  font-size: 28rpx;
-  color: #a0a0b0;
-  margin-bottom: 16rpx;
+  font-size: 26rpx;
+  color: #888;
+  margin-bottom: 12rpx;
 }
 
 .room-value {
@@ -46,7 +66,7 @@
 .room-hint {
   font-size: 24rpx;
   color: #666;
-  margin-top: 16rpx;
+  margin-top: 12rpx;
 }
 
 /* 等待区域 */
@@ -54,14 +74,14 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 30rpx;
+  gap: 24rpx;
 }
 
 .wait-icon {
   width: 80rpx;
   height: 80rpx;
-  border: 6rpx solid #4a90d9;
-  border-top-color: transparent;
+  border: 6rpx solid rgba(74, 144, 217, 0.3);
+  border-top-color: #4a90d9;
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -74,11 +94,17 @@
 
 .wait-text {
   font-size: 32rpx;
-  color: #a0a0b0;
+  color: #ccc;
+}
+
+.wait-hint {
+  font-size: 26rpx;
+  color: #888;
+  text-align: center;
 }
 
 .btn-simulate {
-  margin-top: 40rpx;
+  margin-top: 60rpx;
   background: rgba(255, 255, 255, 0.05);
   border-radius: 32rpx;
   padding: 16rpx 40rpx;
@@ -94,12 +120,37 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  gap: 16rpx;
+  padding: 40rpx 0;
+}
+
+.joined-icon {
+  width: 100rpx;
+  height: 100rpx;
+  border-radius: 50%;
+  background: rgba(80, 200, 120, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.joined-icon::before {
+  content: '';
+  width: 40rpx;
+  height: 40rpx;
+  border: 6rpx solid #50c878;
+  border-radius: 50%;
 }
 
 .joined-text {
   font-size: 36rpx;
   font-weight: 600;
   color: #50c878;
+}
+
+.joined-hint {
+  font-size: 26rpx;
+  color: #888;
 }
 
 /* 按钮 */

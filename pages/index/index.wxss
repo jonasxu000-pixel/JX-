@@ -12,8 +12,8 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin-top: 160rpx;
-  margin-bottom: 100rpx;
+  margin-top: 120rpx;
+  margin-bottom: 80rpx;
 }
 
 .icon-area {
@@ -51,14 +51,21 @@
   letter-spacing: 4rpx;
 }
 
-/* 功能按钮 */
-.action-section {
+/* 功能分组 */
+.section {
   width: 75%;
-  display: flex;
-  flex-direction: column;
-  gap: 28rpx;
+  margin-bottom: 40rpx;
 }
 
+.section-title {
+  display: block;
+  font-size: 26rpx;
+  color: #888;
+  margin-bottom: 16rpx;
+  letter-spacing: 2rpx;
+}
+
+/* 按钮 */
 .btn {
   width: 100%;
   height: 96rpx;
@@ -67,6 +74,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  margin-bottom: 16rpx;
 }
 
 .btn::after {

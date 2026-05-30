@@ -53,6 +53,9 @@ Page({
   onBack() {
     wx.navigateBack({
       delta: 2,
+      fail: () => {
+        wx.reLaunch({ url: '/pages/index/index' });
+      },
     });
   },
 });

@@ -1,9 +1,14 @@
 <!--pages/room/wait.wxml - 房间等待页面-->
 <view class="container">
   <view class="content">
+    <!-- 身份标签 -->
+    <view class="role-badge {{role === 'host' ? 'host' : 'guest'}}">
+      <text class="role-text">{{role === 'host' ? '你是房主' : '你正在加入'}}</text>
+    </view>
+
     <!-- 房间号展示 -->
     <view class="room-card" bindtap="onCopyRoomId">
-      <text class="room-label">{{role === 'host' ? '你的房间号' : '正在加入房间'}}</text>
+      <text class="room-label">房间号</text>
       <text class="room-value">{{roomId}}</text>
       <text class="room-hint" wx:if="{{role === 'host'}}">点击复制</text>
     </view>
@@ -12,6 +17,8 @@
     <view class="wait-area" wx:if="{{waiting}}">
       <view class="wait-icon"></view>
       <text class="wait-text">等待对手加入...</text>
+      <text class="wait-hint" wx:if="{{role === 'host'}}">将房间号分享给好友即可开始对战</text>
+
       <!-- 临时按钮：模拟加入 -->
       <button class="btn-simulate" bindtap="onSimulateJoin">
         <text class="simulate-text">模拟加入（调试用）</text>
@@ -20,11 +27,13 @@
 
     <!-- 对手已加入 -->
     <view class="joined-area" wx:if="{{!waiting}}">
-      <text class="joined-text">对手已加入，开始对战！</text>
+      <view class="joined-icon"></view>
+      <text class="joined-text">对手已加入</text>
+      <text class="joined-hint">正在准备开始对战...</text>
     </view>
   </view>
 
   <button class="btn btn-back" bindtap="onBack">
-    <text class="btn-back-text">返回</text>
+    <text class="btn-back-text">取消等待</text>
   </button>
 </view>
