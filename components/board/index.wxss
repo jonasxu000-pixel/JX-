@@ -1,0 +1,7 @@
+/* components/board/index.wxss */
+.board-canvas {
+  width: 92vw;
+  height: 92vw;
+  display: block;
+  margin: 20rpx auto;
+}

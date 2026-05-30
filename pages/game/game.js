@@ -1,12 +1,28 @@
-// pages/game/game.js - 游戏页面（第一阶段：单机五子棋核心逻辑）
+// pages/game/game.js - 游戏页面
+const board = require('../../utils/board');
+
 Page({
   data: {
-    // TODO: 棋盘状态、当前玩家、胜负结果等
+    currentPlayer: board.BLACK,
+    statusText: '黑棋落子',
   },
 
   onLoad() {
     console.log('Game page loaded');
   },
 
-  // TODO: 落子逻辑、胜负判断、棋盘渲染
+  /**
+   * 接收棋盘落子事件
+   */
+  _onPiecePlaced(e) {
+    const { row, col, piece } = e.detail;
+    console.log(`落子: (${row}, ${col})`);
+
+    // 切换玩家
+    const nextPlayer = piece === board.BLACK ? board.WHITE : board.BLACK;
+    this.setData({
+      currentPlayer: nextPlayer,
+      statusText: `${board.pieceName(nextPlayer)}落子`,
+    });
+  },
 });
