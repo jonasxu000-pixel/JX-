@@ -1,0 +1,48 @@
+/* pages/index/index.wxss - 首页样式 */
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
+}
+
+.title-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 120rpx;
+}
+
+.title {
+  font-size: 72rpx;
+  font-weight: bold;
+  color: #ffffff;
+  letter-spacing: 8rpx;
+}
+
+.subtitle {
+  font-size: 32rpx;
+  color: #a0a0b0;
+  margin-top: 16rpx;
+  letter-spacing: 4rpx;
+}
+
+.action-section {
+  width: 80%;
+}
+
+.start-btn {
+  background-color: #4a90d9;
+  color: #fff;
+  border-radius: 48rpx;
+  font-size: 36rpx;
+  height: 96rpx;
+  line-height: 96rpx;
+  border: none;
+}
+
+.start-btn::after {
+  border: none;
+}

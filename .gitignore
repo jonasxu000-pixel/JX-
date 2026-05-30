@@ -1,0 +1,33 @@
+# 微信开发者工具
+node_modules/
+miniprogram_npm/
+
+# 微信开发者工具自动生成的文件
+*.wechat.wxml
+*.wechat.wxss
+*.wechat.js
+*.wechat.json
+
+# 构建产物（如有）
+dist/
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-*
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 环境配置
+.env
+*.local
+
+# 小程序 appid 配置文件（如有敏感信息）
+# private.key
+
+# 日志文件
+*.log

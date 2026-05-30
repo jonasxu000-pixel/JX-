@@ -1,0 +1,11 @@
+<!--pages/index/index.wxml - 首页：开始游戏入口-->
+<view class="container">
+  <view class="title-section">
+    <text class="title">双人五子棋</text>
+    <text class="subtitle">好友联机对战</text>
+  </view>
+
+  <view class="action-section">
+    <button class="start-btn" bindtap="onStartGame">开始游戏</button>
+  </view>
+</view>

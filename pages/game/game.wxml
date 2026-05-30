@@ -1,0 +1,5 @@
+<!--pages/game/game.wxml - 游戏页面-->
+<view class="container">
+  <!-- TODO: 棋盘渲染、状态提示、落子交互 -->
+  <text>游戏页面开发中...</text>
+</view>
