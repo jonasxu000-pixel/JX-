@@ -33,12 +33,24 @@ function isValidPos(row, col) {
  * @param {object} config - 棋盘渲染配置
  * @param {number} config.padding - 棋盘边距
  * @param {number} config.cellSize - 格子间距
- * @returns {object|null} {row, col} 或 null（点击范围外）
+ * @returns {object|null} {row, col} 或 null（距离交叉点过远）
  */
 function pxToGrid(px, py, { padding, cellSize }) {
+  // 计算最近的交叉点索引
   const col = Math.round((px - padding) / cellSize);
   const row = Math.round((py - padding) / cellSize);
-  return isValidPos(row, col) ? { row, col } : null;
+
+  if (!isValidPos(row, col)) return null;
+
+  // 计算点击点到对应交叉点的欧氏距离
+  const cx = padding + col * cellSize;
+  const cy = padding + row * cellSize;
+  const dist = Math.sqrt((px - cx) ** 2 + (py - cy) ** 2);
+
+  // 距离超过半格则拒绝，防止误触到相邻交叉点
+  if (dist > cellSize * 0.45) return null;
+
+  return { row, col };
 }
 
 /**

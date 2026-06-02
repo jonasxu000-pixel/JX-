@@ -35,6 +35,9 @@ Component({
   // Canvas 上下文
   _ctx: null,
 
+  // 当前落子颜色——由组件自行维护，避免异步property导致回合错乱
+  _currentPiece: board.BLACK,
+
   lifetimes: {
     attached() {
       this._boardState = board.createBoard();
@@ -205,7 +208,9 @@ Component({
       const { row, col } = grid;
       if (this._boardState[row][col] !== board.EMPTY) return;
 
-      const piece = this.data.currentPlayer;
+      // 使用组件内部维护的回合状态，避免异步property导致颜色错乱
+      const piece = this._currentPiece;
+      const nextPiece = piece === board.BLACK ? board.WHITE : board.BLACK;
 
       // 落子
       this._boardState[row][col] = piece;
@@ -213,6 +218,9 @@ Component({
 
       // 记录到历史
       this._history.push({ row, col, piece });
+
+      // 落子后立刻切换回合，确保下次点击用正确颜色
+      this._currentPiece = nextPiece;
 
       // 标记最后一步（清除旧标记，画新标记）
       this._drawLastMoveMark();
@@ -239,6 +247,9 @@ Component({
       const last = this._history.pop();
       this._boardState[last.row][last.col] = board.EMPTY;
 
+      // 回退到撤销那一手的执棋方
+      this._currentPiece = last.piece;
+
       // 重绘整个棋盘（避免Canvas擦除不干净）
       this._drawBoard(this.data.canvasWidth);
 
@@ -258,6 +269,7 @@ Component({
     resetBoard() {
       this._boardState = board.createBoard();
       this._history = [];
+      this._currentPiece = board.BLACK;
       this.setData({ locked: false });
       this._drawBoard(this.data.canvasWidth);
     },
