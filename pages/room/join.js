@@ -38,6 +38,10 @@ Page({
    * 返回首页
    */
   onBack() {
-    wx.navigateBack();
+    wx.navigateBack({
+      fail: () => {
+        wx.reLaunch({ url: '/pages/index/index' });
+      },
+    });
   },
 });

@@ -41,6 +41,9 @@ Component({
   // 当前落子颜色——由组件自行维护，避免异步property导致回合错乱
   _currentPiece: board.BLACK,
 
+  // 上次最后落子标记位置（用于清除旧标记）
+  _lastMarkPos: null,
+
   lifetimes: {
     attached() {
       this._initCanvas();
@@ -174,6 +177,15 @@ Component({
       const { padding, cellSize } = this._config;
       const last = this._history[this._history.length - 1];
 
+      // 先清除旧标记（如果有）
+      if (this._lastMarkPos) {
+        const oldX = padding + this._lastMarkPos.col * cellSize;
+        const oldY = padding + this._lastMarkPos.row * cellSize;
+        const oldRadius = cellSize * 0.25;
+        ctx.clearRect(oldX - oldRadius, oldY - oldRadius, oldRadius * 2, oldRadius * 2);
+      }
+
+      // 画新标记
       const x = padding + last.col * cellSize;
       const y = padding + last.row * cellSize;
 
@@ -181,6 +193,9 @@ Component({
       ctx.arc(x, y, cellSize * 0.12, 0, Math.PI * 2);
       ctx.fillStyle = '#e74c3c';
       ctx.fill();
+
+      // 记录当前标记位置
+      this._lastMarkPos = { row: last.row, col: last.col };
     },
 
     /**
@@ -292,6 +307,7 @@ Component({
       this._boardState = board.createBoard();
       this._history = [];
       this._currentPiece = board.BLACK;
+      this._lastMarkPos = null;
       this.setData({ locked: false });
       this._drawBoard(this.data.canvasWidth);
     },
