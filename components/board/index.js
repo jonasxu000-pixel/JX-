@@ -43,8 +43,14 @@ Component({
 
   lifetimes: {
     attached() {
-      this._boardState = board.createBoard();
       this._initCanvas();
+    },
+    ready() {
+      // 每次页面显示时重置状态，确保组件复用也能正确初始化
+      this._boardState = board.createBoard();
+      this._history = [];
+      this._currentPiece = board.BLACK;
+      this.setData({ locked: false });
     },
     detached() {
       this._ctx = null;
