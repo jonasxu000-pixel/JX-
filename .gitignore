@@ -1,9 +1,11 @@
 # 微信开发者工具
 node_modules/
 miniprogram_npm/
-miniprogram_npm/
+package.json
+package-lock.json
 
 # 微信开发者工具自动生成的文件
+project.private.config.json
 *.wechat.wxml
 *.wechat.wxss
 *.wechat.js
@@ -32,3 +34,7 @@ Thumbs.db
 
 # 日志文件
 *.log
+
+# AI 分析文件
+AGENTS.md
+PHASE_1_2_SUMMARY.md
