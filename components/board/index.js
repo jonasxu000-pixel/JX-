@@ -177,15 +177,15 @@ Component({
       const { padding, cellSize } = this._config;
       const last = this._history[this._history.length - 1];
 
-      // 先清除旧标记（如果有）
+      // 先重绘旧标记位置的棋子，用棋子本身覆盖掉旧红点
       if (this._lastMarkPos) {
-        const oldX = padding + this._lastMarkPos.col * cellSize;
-        const oldY = padding + this._lastMarkPos.row * cellSize;
-        const oldRadius = cellSize * 0.25;
-        ctx.clearRect(oldX - oldRadius, oldY - oldRadius, oldRadius * 2, oldRadius * 2);
+        const oldPiece = this._boardState[this._lastMarkPos.row][this._lastMarkPos.col];
+        if (oldPiece !== board.EMPTY) {
+          this._drawPiece(this._lastMarkPos.row, this._lastMarkPos.col, oldPiece);
+        }
       }
 
-      // 画新标记
+      // 画新红点
       const x = padding + last.col * cellSize;
       const y = padding + last.row * cellSize;
 
@@ -194,7 +194,6 @@ Component({
       ctx.fillStyle = '#e74c3c';
       ctx.fill();
 
-      // 记录当前标记位置
       this._lastMarkPos = { row: last.row, col: last.col };
     },
 
