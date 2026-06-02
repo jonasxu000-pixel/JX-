@@ -35,6 +35,9 @@ Component({
   // Canvas 上下文
   _ctx: null,
 
+  // Canvas 在页面中的位置（用于坐标转换）
+  _canvasRect: null,
+
   // 当前落子颜色——由组件自行维护，避免异步property导致回合错乱
   _currentPiece: board.BLACK,
 
@@ -81,6 +84,15 @@ Component({
 
           this._drawBoard(width);
         });
+
+      // 同时获取 Canvas 在页面中的位置
+      const rectQuery = this.createSelectorQuery();
+      rectQuery.select('#boardCanvas').boundingClientRect();
+      rectQuery.exec((res) => {
+        if (res[0]) {
+          this._canvasRect = res[0];
+        }
+      });
     },
 
     /**
@@ -199,8 +211,12 @@ Component({
      */
     _onTap(e) {
       if (this.data.locked) return;
+      if (!this._canvasRect || !this._config) return;
 
-      const { x, y } = e.detail;
+      // e.detail.x/y 是页面坐标，需转换为 Canvas 内部坐标
+      const x = e.detail.x - this._canvasRect.left;
+      const y = e.detail.y - this._canvasRect.top;
+
       const grid = board.pxToGrid(x, y, this._config);
 
       if (!grid) return;
