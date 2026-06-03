@@ -39,10 +39,6 @@ Page({
       showCancel: false,
       success: () => {
         this.setData({ waiting: false });
-        // 跳转到游戏页面
-        wx.redirectTo({
-          url: '/pages/game/game',
-        });
       },
     });
   },
