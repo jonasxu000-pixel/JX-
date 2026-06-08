@@ -38,6 +38,15 @@
   - 创建临时房间、复用真实 `placePiece` 落子路径写入一手黑棋、读回校验、自动清理
   - 创建房间页新增“云端自检”按钮，先单人确认云端写库链路
   - 已通过开发者工具自动化真实调用：`{"success":true,"version":"roomAction-20260608-self-test-placepiece-1","currentTurn":"guest","lastMove":{"row":7,"col":7,"piece":1,"role":"host"},"piece":1}`
+- 修复双人联调会直接踩到的房间元数据问题：
+  - 云函数 `createRoom` 恢复生成 6 位数字房间号，和加入页“请输入6位房间号”的交互保持一致
+  - 云函数 `createRoom` 返回 `role=host`、`color=black`
+  - 云函数 `joinRoom` 返回 `role=guest`、`color=white`，避免加入者进入游戏页后角色变成 `undefined`
+- 新增完整云端对局自检：
+  - 云函数动作：`selfTestMatch`
+  - 临时构造房主/加入者两个玩家，复用真实 `placePiece` 路径轮流落子
+  - 校验加入者抢先落子会被拒绝、房主黑棋五连、加入者白棋落子、最终 `winner=host`、`status=finished`
+  - 已通过开发者工具自动化真实调用：`{"success":true,"version":"roomAction-20260608-self-test-match-1","moves":9,"winner":"host","status":"finished","hostBlackLine":true,"guestWhiteLine":true,"rejectedGuestEarlyMove":true}`
 - 已通过微信开发者工具 CLI 自动部署 `roomAction`：
   - 环境：`cloud1-d8g33m3x28826d0ab`
   - 结果：`roomAction success=true`
@@ -54,8 +63,11 @@
   - 房主黑棋五连后 `winner=host`、`status=finished`
   - 加入者白棋五连后 `winner=guest`、`status=finished`
   - 非当前回合落子、重复位置落子、结束后继续落子均会被拒绝
+  - 房间号固定校验为 6 位数字
+  - 创建者返回 `host/black`，加入者返回 `guest/white`
   - 可复用脚本：`node scripts/verify-room-action.js`
   - `selfTestMove` 已纳入本地脚本验证，并校验黑棋写入、回合切换、`lastMove`
+  - `selfTestMatch` 已纳入本地脚本验证，并校验完整黑白轮流对局
 - 前端状态映射模拟已通过：
   - 房主/加入者回合状态正确
   - 黑白角色映射正确
@@ -68,7 +80,7 @@
   - 双方轮流落子，非当前回合无法落子
   - 双方棋盘实时一致
   - 黑棋/白棋分别五连后，双方都显示胜负结果
-- 云函数 `roomAction` 已通过 CLI 部署，待真机/双端落子复测
+- 云函数 `roomAction` 已通过 CLI 部署，当前云端版本：`roomAction-20260608-self-test-match-1`，待真机/双端落子复测
 
 ## 当前风险
 

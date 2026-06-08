@@ -126,7 +126,13 @@ async function createPlayingRoom(roomAction) {
   const created = await call(roomAction, 'host-openid', { action: 'createRoom' });
   const roomId = created.roomId;
   assert(roomId, 'createRoom should return roomId');
-  await call(roomAction, 'guest-openid', { action: 'joinRoom', roomId });
+  assert(/^\d{6}$/.test(roomId), 'roomId should be a 6 digit code');
+  assert(created.role === 'host', 'createRoom should return host role');
+  assert(created.color === 'black', 'createRoom should return black color');
+
+  const joined = await call(roomAction, 'guest-openid', { action: 'joinRoom', roomId });
+  assert(joined.role === 'guest', 'joinRoom should return guest role');
+  assert(joined.color === 'white', 'joinRoom should return white color');
   return roomId;
 }
 
@@ -179,6 +185,18 @@ async function verifySelfTestMove(roomAction) {
   assert(result.lastMove && result.lastMove.row === 7 && result.lastMove.col === 7, 'self test lastMove mismatch');
 }
 
+async function verifySelfTestMatch(roomAction) {
+  const result = await call(roomAction, 'host-openid', { action: 'selfTestMatch' });
+  assert(result.version, 'match self test should return version');
+  assert(result.moves === 9, 'match self test should apply 9 moves');
+  assert(result.rejectedGuestEarlyMove, 'match self test should reject guest early move');
+  assert(result.hostBlackLine, 'match self test should confirm host black line');
+  assert(result.guestWhiteLine, 'match self test should confirm guest white moves');
+  assert(result.status === 'finished', 'match self test should finish game');
+  assert(result.winner === 'host', 'match self test should produce host winner');
+  assert(result.lastMove && result.lastMove.piece === 1, 'match self test last move should be black');
+}
+
 async function main() {
   installMocks();
   const roomAction = loadRoomAction();
@@ -186,6 +204,7 @@ async function main() {
   await verifyHostBlackWin(roomAction);
   await verifyGuestWhiteWin(roomAction);
   await verifySelfTestMove(roomAction);
+  await verifySelfTestMatch(roomAction);
 
   console.log('roomAction verification ok');
 }

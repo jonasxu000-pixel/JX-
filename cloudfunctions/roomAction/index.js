@@ -13,7 +13,7 @@ const BOARD_SIZE = 15;
 const EMPTY = 0;
 const BLACK = 1;
 const WHITE = 2;
-const ROOM_ACTION_VERSION = 'roomAction-20260608-self-test-placepiece-1';
+const ROOM_ACTION_VERSION = 'roomAction-20260608-self-test-match-1';
 
 function createBoard() {
   return Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(EMPTY));
@@ -103,9 +103,7 @@ function nextRole(role) {
 }
 
 function createUniqueRoomId() {
-  const timestamp = Date.now().toString(36).toUpperCase();
-  const random = Math.random().toString(36).slice(2, 6).toUpperCase();
-  return `${timestamp}${random}`.slice(-8);
+  return String(Math.floor(100000 + Math.random() * 900000));
 }
 
 async function placePieceForOpenId(targetRoomId, targetRow, targetCol, openId) {
@@ -193,29 +191,39 @@ exports.main = async (event = {}) => {
         };
 
       case 'createRoom': {
-        const newRoomId = createUniqueRoomId();
-        const roomData = {
-          _id: newRoomId,
-          host: {
-            openId: callerOpenId,
-            color: 'black',
-          },
-          guest: null,
-          currentTurn: 'host',
-          board: createBoard(),
-          lastMove: null,
-          winner: null,
-          status: 'waiting',
-          createdAt: db.serverDate(),
-          updatedAt: db.serverDate(),
-        };
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+          const newRoomId = createUniqueRoomId();
+          const roomData = {
+            _id: newRoomId,
+            host: {
+              openId: callerOpenId,
+              color: 'black',
+            },
+            guest: null,
+            currentTurn: 'host',
+            board: createBoard(),
+            lastMove: null,
+            winner: null,
+            status: 'waiting',
+            createdAt: db.serverDate(),
+            updatedAt: db.serverDate(),
+          };
 
-        await rooms.add({ data: roomData });
+          try {
+            await rooms.add({ data: roomData });
 
-        return {
-          success: true,
-          roomId: newRoomId,
-        };
+            return {
+              success: true,
+              roomId: newRoomId,
+              role: 'host',
+              color: 'black',
+            };
+          } catch (err) {
+            if (attempt === 4) throw err;
+          }
+        }
+
+        return { success: false, error: '创建房间失败，请重试' };
       }
 
       case 'selfTestMove': {
@@ -276,6 +284,110 @@ exports.main = async (event = {}) => {
         }
       }
 
+      case 'selfTestMatch': {
+        const testRoomId = `TEST_MATCH_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const hostOpenId = '__self_test_host__';
+        const guestOpenId = '__self_test_guest__';
+
+        try {
+          await rooms.add({
+            data: {
+              _id: testRoomId,
+              host: {
+                openId: hostOpenId,
+                color: 'black',
+              },
+              guest: {
+                openId: guestOpenId,
+                color: 'white',
+              },
+              currentTurn: 'host',
+              board: createBoard(),
+              lastMove: null,
+              winner: null,
+              status: 'playing',
+              createdAt: db.serverDate(),
+              updatedAt: db.serverDate(),
+            },
+          });
+
+          const guestEarlyMove = await placePieceForOpenId(testRoomId, 1, 0, guestOpenId);
+          if (guestEarlyMove.success) {
+            return {
+              success: false,
+              version: ROOM_ACTION_VERSION,
+              error: '非当前回合的加入者落子未被拒绝',
+            };
+          }
+
+          const moves = [
+            { openId: hostOpenId, role: 'host', row: 0, col: 0, piece: BLACK },
+            { openId: guestOpenId, role: 'guest', row: 1, col: 0, piece: WHITE },
+            { openId: hostOpenId, role: 'host', row: 0, col: 1, piece: BLACK },
+            { openId: guestOpenId, role: 'guest', row: 1, col: 1, piece: WHITE },
+            { openId: hostOpenId, role: 'host', row: 0, col: 2, piece: BLACK },
+            { openId: guestOpenId, role: 'guest', row: 1, col: 2, piece: WHITE },
+            { openId: hostOpenId, role: 'host', row: 0, col: 3, piece: BLACK },
+            { openId: guestOpenId, role: 'guest', row: 1, col: 3, piece: WHITE },
+            { openId: hostOpenId, role: 'host', row: 0, col: 4, piece: BLACK },
+          ];
+
+          const applied = [];
+          for (const move of moves) {
+            const result = await placePieceForOpenId(testRoomId, move.row, move.col, move.openId);
+            if (!result.success) {
+              return {
+                success: false,
+                version: ROOM_ACTION_VERSION,
+                error: `第 ${applied.length + 1} 手落子失败: ${result.error || ''}`,
+              };
+            }
+
+            if (result.lastMove.piece !== move.piece || result.lastMove.role !== move.role) {
+              return {
+                success: false,
+                version: ROOM_ACTION_VERSION,
+                error: `第 ${applied.length + 1} 手角色/棋色错误`,
+              };
+            }
+
+            applied.push(result.lastMove);
+          }
+
+          const verifyRes = await rooms.doc(testRoomId).get();
+          const testRoom = verifyRes.data || {};
+          const savedBoard = normalizeBoard(testRoom.board);
+          const hostBlackLine = savedBoard[0].slice(0, 5).every(piece => piece === BLACK);
+          const guestWhiteLine = savedBoard[1].slice(0, 4).every(piece => piece === WHITE);
+          const ok = hostBlackLine
+            && guestWhiteLine
+            && testRoom.status === 'finished'
+            && testRoom.winner === 'host'
+            && testRoom.currentTurn === 'host'
+            && testRoom.lastMove
+            && testRoom.lastMove.row === 0
+            && testRoom.lastMove.col === 4
+            && testRoom.lastMove.piece === BLACK;
+
+          return {
+            success: ok,
+            version: ROOM_ACTION_VERSION,
+            roomId: testRoomId,
+            moves: applied.length,
+            status: testRoom.status,
+            winner: testRoom.winner,
+            currentTurn: testRoom.currentTurn,
+            lastMove: testRoom.lastMove,
+            hostBlackLine,
+            guestWhiteLine,
+            rejectedGuestEarlyMove: !guestEarlyMove.success,
+            error: ok ? '' : '完整对局自检读回校验失败',
+          };
+        } finally {
+          await rooms.doc(testRoomId).remove().catch(() => {});
+        }
+      }
+
       case 'joinRoom': {
         if (!roomId) {
           return { success: false, error: '房间号不能为空' };
@@ -307,7 +419,11 @@ exports.main = async (event = {}) => {
           },
         });
 
-        return { success: true };
+        return {
+          success: true,
+          role: 'guest',
+          color: 'white',
+        };
       }
 
       case 'placePiece':
