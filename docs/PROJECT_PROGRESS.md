@@ -33,6 +33,10 @@
   - `lastMove` 使用 `_.set({ row, col, piece, role })` 整体替换
   - `board` 使用 `_.set(nextBoard)` 整体替换
   - 避免云数据库把对象拆成 `lastMove.col` 这类嵌套路径写入
+- 新增单人云端自检：
+  - 云函数动作：`selfTestMove`
+  - 创建临时房间、写入一手黑棋、读回校验、自动清理
+  - 创建房间页新增“云端自检”按钮，先单人确认云端写库链路
 - 已通过微信开发者工具 CLI 自动部署 `roomAction`：
   - 环境：`cloud1-d8g33m3x28826d0ab`
   - 结果：`roomAction success=true`
@@ -50,6 +54,7 @@
   - 加入者白棋五连后 `winner=guest`、`status=finished`
   - 非当前回合落子、重复位置落子、结束后继续落子均会被拒绝
   - 可复用脚本：`node scripts/verify-room-action.js`
+  - `selfTestMove` 已纳入本地脚本验证
 - 前端状态映射模拟已通过：
   - 房主/加入者回合状态正确
   - 黑白角色映射正确

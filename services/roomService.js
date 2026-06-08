@@ -20,6 +20,13 @@ function createRoom() {
   }).then(res => assertCloudResult(res, '创建失败').roomId);
 }
 
+function selfTestMove() {
+  return wx.cloud.callFunction({
+    name: 'roomAction',
+    data: { action: 'selfTestMove' },
+  }).then(res => assertCloudResult(res, '云端自检失败'));
+}
+
 function joinRoom(roomId) {
   return wx.cloud.callFunction({
     name: 'roomAction',
@@ -95,6 +102,7 @@ function getOpenId() {
 module.exports = {
   ROOM_SERVICE_VERSION,
   createRoom,
+  selfTestMove,
   joinRoom,
   watchRoom,
   getRoom,

@@ -176,12 +176,18 @@ async function verifyGuestWhiteWin(roomAction) {
   assert(win.board[2].slice(0, 5).every(piece => piece === 2), 'guest white line missing');
 }
 
+async function verifySelfTestMove(roomAction) {
+  const result = await call(roomAction, 'host-openid', { action: 'selfTestMove' });
+  assert(result.version, 'self test should return version');
+}
+
 async function main() {
   installMocks();
   const roomAction = loadRoomAction();
 
   await verifyHostBlackWin(roomAction);
   await verifyGuestWhiteWin(roomAction);
+  await verifySelfTestMove(roomAction);
 
   console.log('roomAction verification ok');
 }

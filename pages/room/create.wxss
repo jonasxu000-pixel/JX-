@@ -122,10 +122,21 @@
   box-shadow: 0 6rpx 20rpx rgba(74, 144, 217, 0.4);
 }
 
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1rpx solid rgba(255, 255, 255, 0.18);
+}
+
 .btn-text {
   font-size: 34rpx;
   color: #fff;
   font-weight: 600;
+}
+
+.btn-secondary-text {
+  font-size: 30rpx;
+  color: #c8d8f0;
+  font-weight: 500;
 }
 
 .btn-back {

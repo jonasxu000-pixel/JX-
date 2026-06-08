@@ -5,6 +5,7 @@ Page({
     roomId: '',
     created: false,
     loading: false,
+    testing: false,
   },
 
   onCreateRoom() {
@@ -32,6 +33,35 @@ Page({
       })
       .finally(() => {
         this.setData({ loading: false });
+      });
+  },
+
+  onSelfTestMove() {
+    if (this.data.loading || this.data.testing) return;
+
+    this.setData({ testing: true });
+    wx.showLoading({ title: '云端自检中...' });
+
+    roomService.selfTestMove()
+      .then(() => {
+        wx.hideLoading();
+        wx.showToast({
+          title: '云端自检通过',
+          icon: 'success',
+          duration: 1800,
+        });
+      })
+      .catch(err => {
+        console.error('云端自检失败:', err);
+        wx.hideLoading();
+        wx.showModal({
+          title: '云端自检失败',
+          content: err.message || '请查看 roomAction 最新日志',
+          showCancel: false,
+        });
+      })
+      .finally(() => {
+        this.setData({ testing: false });
       });
   },
 

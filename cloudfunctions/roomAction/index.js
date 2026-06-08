@@ -10,7 +10,7 @@ const BOARD_SIZE = 15;
 const EMPTY = 0;
 const BLACK = 1;
 const WHITE = 2;
-const ROOM_ACTION_VERSION = 'roomAction-20260608-doc-update-1';
+const ROOM_ACTION_VERSION = 'roomAction-20260608-self-test-1';
 
 function createBoard() {
   return Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(EMPTY));
@@ -127,6 +127,53 @@ exports.main = async (event) => {
           },
         });
         return { success: true, roomId: newRoomId };
+      }
+
+      case 'selfTestMove': {
+        const testRoomId = `selftest_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+        const testBoard = createBoard();
+
+        try {
+          await db.collection('rooms').add({
+            data: {
+              _id: testRoomId,
+              host: { openId: callerOpenId, color: 'black' },
+              guest: { openId: '__self_test_guest__', color: 'white' },
+              currentTurn: 'host',
+              board: testBoard,
+              lastMove: null,
+              winner: null,
+              status: 'playing',
+              createdAt: db.serverDate(),
+              updatedAt: db.serverDate(),
+            },
+          });
+
+          testBoard[7][7] = BLACK;
+          await db.collection('rooms').doc(testRoomId).update({
+            data: {
+              board: _.set(testBoard),
+              lastMove: _.set({ row: 7, col: 7, piece: BLACK, role: 'host' }),
+              currentTurn: 'guest',
+              updatedAt: db.serverDate(),
+            },
+          });
+
+          const verifyRes = await db.collection('rooms').doc(testRoomId).get();
+          const verifiedRoom = verifyRes.data;
+          const verifiedBoard = normalizeBoard(verifiedRoom.board);
+          const ok = verifiedRoom
+            && verifiedBoard[7][7] === BLACK
+            && verifiedRoom.lastMove
+            && verifiedRoom.lastMove.row === 7
+            && verifiedRoom.lastMove.col === 7
+            && verifiedRoom.currentTurn === 'guest';
+
+          if (!ok) return { success: false, error: '云端自检失败：写入后读回数据不一致' };
+          return { success: true, version: ROOM_ACTION_VERSION };
+        } finally {
+          await db.collection('rooms').doc(testRoomId).remove().catch(() => {});
+        }
       }
 
       case 'joinRoom': {
