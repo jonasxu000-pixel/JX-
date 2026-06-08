@@ -8,6 +8,7 @@
     id="board"
     currentPlayer="{{currentPlayer}}"
     locked="{{boardLocked}}"
+    controlled="{{isOnline}}"
     bind:onPlace="_onPiecePlaced"
     bind:onWin="_onWin"
   />

@@ -36,6 +36,8 @@ Page({
   _boardComp: null,
   _watcher: null,
   _leaving: false,
+  _resultShown: false,
+  _moveSubmitting: false,
 
   onLoad(options = {}) {
     if (!options.roomId) return;
@@ -78,7 +80,7 @@ Page({
   },
 
   _loadRoom() {
-    roomService.getRoom(this.data.roomId)
+    return roomService.getRoom(this.data.roomId)
       .then(roomData => this._applyRoomData(roomData))
       .catch(err => {
         console.error('读取房间失败:', err);
@@ -105,6 +107,7 @@ Page({
         syncing: false,
         boardLocked: true,
       });
+      this._moveSubmitting = false;
       return;
     }
 
@@ -121,6 +124,7 @@ Page({
     if (isFinished) {
       statusText = `${roleName(roomData.winner, this.data.role)}获胜`;
       resultText = statusText;
+      this._showOnlineResultOnce(statusText);
     } else if (isWaiting) {
       statusText = '对手已离开';
       resultText = '对手已离开房间';
@@ -139,10 +143,23 @@ Page({
       syncing: false,
       boardLocked: isFinished || isWaiting || !isMyTurn,
     });
+    this._moveSubmitting = false;
 
     if (this._boardComp) {
       this._boardComp.syncBoard(roomData.board, roomData.lastMove, currentPlayer);
     }
+  },
+
+  _showOnlineResultOnce(resultText) {
+    if (this._resultShown) return;
+    this._resultShown = true;
+
+    wx.showModal({
+      title: '游戏结束',
+      content: resultText,
+      confirmText: '知道了',
+      showCancel: false,
+    });
   },
 
   _onPiecePlaced(e) {
@@ -157,7 +174,7 @@ Page({
       return;
     }
 
-    if (!this.data.isMyTurn || this.data.syncing) {
+    if (this._moveSubmitting || !this.data.isMyTurn || this.data.syncing) {
       this._loadRoom();
       return;
     }
@@ -168,11 +185,12 @@ Page({
       return;
     }
 
+    this._moveSubmitting = true;
     this.setData({
       syncing: true,
       isMyTurn: false,
       boardLocked: true,
-      statusText: '同步落子中...',
+      statusText: '正在同步落子...',
     });
 
     roomService.placePiece(this.data.roomId, row, col)
@@ -180,39 +198,30 @@ Page({
         wx.showToast({ title: err.message || '落子失败', icon: 'none' });
       })
       .finally(() => {
-        this._loadRoom();
+        this._loadRoom().finally(() => {
+          this._moveSubmitting = false;
+        });
       });
   },
 
   _onWin(e) {
     if (this.data.isOnline) {
-      const { row, col } = e.detail;
-      this.setData({
-        syncing: true,
-        isMyTurn: false,
-        boardLocked: true,
-        statusText: '同步胜负中...',
-      });
-      roomService.placePiece(this.data.roomId, row, col)
-        .catch(err => {
-          wx.showToast({ title: err.message || '落子失败', icon: 'none' });
-        })
-        .finally(() => {
-          this._loadRoom();
-        });
+      this._loadRoom();
       return;
     }
 
     const { piece } = e.detail;
+    const resultText = `${board.pieceName(piece)} 获胜！`;
+
     this.setData({
       gameOver: true,
-      resultText: `${board.pieceName(piece)} 获胜！`,
+      resultText,
       boardLocked: true,
     });
 
     wx.showModal({
       title: '游戏结束',
-      content: `${board.pieceName(piece)} 获胜！`,
+      content: resultText,
       confirmText: '再来一局',
       showCancel: false,
       success: () => {

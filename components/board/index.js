@@ -17,6 +17,11 @@ Component({
       type: Boolean,
       value: false,
     },
+    // 受控模式下，组件只上报点击坐标，棋盘状态由父级同步写入
+    controlled: {
+      type: Boolean,
+      value: false,
+    },
   },
 
   data: {
@@ -53,7 +58,6 @@ Component({
       this._boardState = board.createBoard();
       this._history = [];
       this._currentPiece = board.BLACK;
-      this.setData({ locked: false });
     },
     detached() {
       this._ctx = null;
@@ -249,6 +253,11 @@ Component({
       // 使用组件内部维护的回合状态，避免异步property导致颜色错乱
       const piece = this._currentPiece;
       const nextPiece = piece === board.BLACK ? board.WHITE : board.BLACK;
+
+      if (this.data.controlled) {
+        this.triggerEvent('onPlace', { row, col, piece });
+        return;
+      }
 
       // 落子
       this._boardState[row][col] = piece;
