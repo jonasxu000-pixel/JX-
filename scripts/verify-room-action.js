@@ -3,7 +3,6 @@ const path = require('path');
 
 const rooms = new Map();
 let currentOpenId = '';
-let nextRoomId = '123456';
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -88,18 +87,14 @@ const wxServerSdkMock = {
 };
 
 const originalRequire = Module.prototype.require;
-const originalRandom = Math.random;
-
 function installMocks() {
   Module.prototype.require = function patchedRequire(request) {
     if (request === 'wx-server-sdk') return wxServerSdkMock;
     return originalRequire.apply(this, arguments);
   };
-  Math.random = () => (Number(nextRoomId) - 100000) / 900000;
 }
 
 function restoreMocks() {
-  Math.random = originalRandom;
   Module.prototype.require = originalRequire;
 }
 
@@ -127,16 +122,16 @@ async function expectFail(roomAction, openId, event, label) {
   return result;
 }
 
-async function createPlayingRoom(roomAction, roomId) {
-  nextRoomId = roomId;
+async function createPlayingRoom(roomAction) {
   const created = await call(roomAction, 'host-openid', { action: 'createRoom' });
-  assert(created.roomId === roomId, 'room id mismatch');
+  const roomId = created.roomId;
+  assert(roomId, 'createRoom should return roomId');
   await call(roomAction, 'guest-openid', { action: 'joinRoom', roomId });
   return roomId;
 }
 
 async function verifyHostBlackWin(roomAction) {
-  const roomId = await createPlayingRoom(roomAction, '123456');
+  const roomId = await createPlayingRoom(roomAction);
 
   await call(roomAction, 'host-openid', { action: 'placePiece', roomId, row: 0, col: 0 });
   await expectFail(roomAction, 'host-openid', { action: 'placePiece', roomId, row: 0, col: 1 }, 'host double move');
@@ -158,7 +153,7 @@ async function verifyHostBlackWin(roomAction) {
 }
 
 async function verifyGuestWhiteWin(roomAction) {
-  const roomId = await createPlayingRoom(roomAction, '654321');
+  const roomId = await createPlayingRoom(roomAction);
 
   await call(roomAction, 'host-openid', { action: 'placePiece', roomId, row: 0, col: 0 });
   await call(roomAction, 'guest-openid', { action: 'placePiece', roomId, row: 2, col: 0 });
@@ -179,6 +174,9 @@ async function verifyGuestWhiteWin(roomAction) {
 async function verifySelfTestMove(roomAction) {
   const result = await call(roomAction, 'host-openid', { action: 'selfTestMove' });
   assert(result.version, 'self test should return version');
+  assert(result.piece === 1, 'self test should write a black piece');
+  assert(result.currentTurn === 'guest', 'self test should switch turn to guest');
+  assert(result.lastMove && result.lastMove.row === 7 && result.lastMove.col === 7, 'self test lastMove mismatch');
 }
 
 async function main() {
