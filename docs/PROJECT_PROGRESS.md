@@ -37,6 +37,7 @@
   - 云函数动作：`selfTestMove`
   - 创建临时房间、写入一手黑棋、读回校验、自动清理
   - 创建房间页新增“云端自检”按钮，先单人确认云端写库链路
+  - 已通过开发者工具自动化真实调用：`{"success":true,"version":"roomAction-20260608-self-test-1"}`
 - 已通过微信开发者工具 CLI 自动部署 `roomAction`：
   - 环境：`cloud1-d8g33m3x28826d0ab`
   - 结果：`roomAction success=true`
