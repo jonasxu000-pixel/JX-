@@ -29,6 +29,10 @@
 - 服务端落子写入已回退为 `doc(roomId).update()`：
   - 修复真机落子时报 `collection.update:fail -502001 database request`
   - 继续保留写入前的身份、回合、坐标、占位、胜负校验
+- 修复 `lastMove` 初始为 `null` 时的数据库更新语义：
+  - `lastMove` 使用 `_.set({ row, col, piece, role })` 整体替换
+  - `board` 使用 `_.set(nextBoard)` 整体替换
+  - 避免云数据库把对象拆成 `lastMove.col` 这类嵌套路径写入
 - 已通过微信开发者工具 CLI 自动部署 `roomAction`：
   - 环境：`cloud1-d8g33m3x28826d0ab`
   - 结果：`roomAction success=true`

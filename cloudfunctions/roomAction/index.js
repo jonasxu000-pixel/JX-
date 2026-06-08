@@ -167,8 +167,8 @@ exports.main = async (event) => {
 
         await db.collection('rooms').doc(roomId).update({
           data: {
-            board: nextBoard,
-            lastMove: { row, col, piece, role },
+            board: _.set(nextBoard),
+            lastMove: _.set({ row, col, piece, role }),
             currentTurn: hasWinner ? role : nextRole(role),
             winner: hasWinner ? role : null,
             status: hasWinner ? 'finished' : 'playing',
