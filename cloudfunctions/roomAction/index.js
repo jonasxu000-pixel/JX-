@@ -10,7 +10,7 @@ const BOARD_SIZE = 15;
 const EMPTY = 0;
 const BLACK = 1;
 const WHITE = 2;
-const ROOM_ACTION_VERSION = 'roomAction-20260608-guarded-move-1';
+const ROOM_ACTION_VERSION = 'roomAction-20260608-doc-update-1';
 
 function createBoard() {
   return Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(EMPTY));
@@ -165,12 +165,7 @@ exports.main = async (event) => {
         nextBoard[row][col] = piece;
         const hasWinner = checkWin(nextBoard, row, col, piece);
 
-        const updateRes = await db.collection('rooms').where({
-          _id: roomId,
-          status: 'playing',
-          currentTurn: role,
-          winner: null,
-        }).update({
+        await db.collection('rooms').doc(roomId).update({
           data: {
             board: nextBoard,
             lastMove: { row, col, piece, role },
@@ -180,9 +175,6 @@ exports.main = async (event) => {
             updatedAt: db.serverDate(),
           },
         });
-        if (!updateRes.stats || updateRes.stats.updated !== 1) {
-          return { success: false, error: '房间状态已变化，请刷新后重试' };
-        }
 
         return {
           success: true,

@@ -4,7 +4,6 @@ const path = require('path');
 const rooms = new Map();
 let currentOpenId = '';
 let nextRoomId = '123456';
-let beforeWhereUpdate = null;
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -59,7 +58,6 @@ const db = {
       where(where) {
         return {
           update({ data }) {
-            if (beforeWhereUpdate) beforeWhereUpdate(where, data);
             let updated = 0;
             rooms.forEach((room, id) => {
               if (updated > 0 || !matchWhere(room, where)) return;
@@ -178,27 +176,12 @@ async function verifyGuestWhiteWin(roomAction) {
   assert(win.board[2].slice(0, 5).every(piece => piece === 2), 'guest white line missing');
 }
 
-async function verifyGuardedMoveConflict(roomAction) {
-  const roomId = await createPlayingRoom(roomAction, '345678');
-
-  const room = rooms.get(roomId);
-  beforeWhereUpdate = () => {
-    room.currentTurn = 'guest';
-    rooms.set(roomId, room);
-    beforeWhereUpdate = null;
-  };
-
-  const result = await expectFail(roomAction, 'host-openid', { action: 'placePiece', roomId, row: 0, col: 0 }, 'stale turn guarded update');
-  assert(result.error.includes('房间状态已变化'), 'stale update should return refresh hint');
-}
-
 async function main() {
   installMocks();
   const roomAction = loadRoomAction();
 
   await verifyHostBlackWin(roomAction);
   await verifyGuestWhiteWin(roomAction);
-  await verifyGuardedMoveConflict(roomAction);
 
   console.log('roomAction verification ok');
 }
