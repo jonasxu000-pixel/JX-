@@ -1,18 +1,6 @@
 const board = require('../../utils/board');
+const onlineGameState = require('../../utils/onlineGameState');
 const roomService = require('../../services/roomService');
-
-function roleToPiece(role) {
-  return role === 'host' ? board.BLACK : board.WHITE;
-}
-
-function pieceToRole(piece) {
-  return piece === board.BLACK ? 'host' : 'guest';
-}
-
-function roleName(role, myRole) {
-  if (!role) return '';
-  return role === myRole ? '你' : '对手';
-}
 
 Page({
   data: {
@@ -21,7 +9,7 @@ Page({
       WHITE: board.WHITE,
     },
     currentPlayer: board.BLACK,
-    statusText: '黑棋落子',
+    statusText: '\u9ed1\u68cb\u843d\u5b50',
     gameOver: false,
     resultText: '',
     isOnline: false,
@@ -49,7 +37,7 @@ Page({
       role,
       color: options.color || (role === 'host' ? 'black' : 'white'),
       currentPlayer: board.BLACK,
-      statusText: '正在同步房间...',
+      statusText: '\u6b63\u5728\u540c\u6b65\u623f\u95f4...',
       isMyTurn: false,
       syncing: true,
       boardLocked: true,
@@ -74,7 +62,7 @@ Page({
     if (this.data.isOnline && this.data.roomId && !this._leaving) {
       this._leaving = true;
       roomService.leaveRoom(this.data.roomId).catch(err => {
-        console.error('离开房间失败:', err);
+        console.error('\u79bb\u5f00\u623f\u95f4\u5931\u8d25:', err);
       });
     }
   },
@@ -83,8 +71,8 @@ Page({
     return roomService.getRoom(this.data.roomId)
       .then(roomData => this._applyRoomData(roomData))
       .catch(err => {
-        console.error('读取房间失败:', err);
-        wx.showToast({ title: '房间同步失败', icon: 'none' });
+        console.error('\u8bfb\u53d6\u623f\u95f4\u5931\u8d25:', err);
+        wx.showToast({ title: '\u623f\u95f4\u540c\u6b65\u5931\u8d25', icon: 'none' });
         this.setData({ syncing: false });
       });
   },
@@ -98,55 +86,25 @@ Page({
   },
 
   _applyRoomData(roomData) {
-    if (!roomData) {
-      this.setData({
-        gameOver: true,
-        statusText: '房间已不存在',
-        resultText: '房间已不存在',
-        isMyTurn: false,
-        syncing: false,
-        boardLocked: true,
-      });
-      this._moveSubmitting = false;
-      return;
-    }
+    const viewState = onlineGameState.deriveOnlineGameState(roomData, this.data.role);
 
-    const currentPlayer = roleToPiece(roomData.currentTurn || 'host');
-    const isFinished = roomData.status === 'finished';
-    const isWaiting = roomData.status === 'waiting';
-    const isMyTurn = roomData.status === 'playing'
-      && roomData.currentTurn === this.data.role
-      && !roomData.winner;
-
-    let statusText = '';
-    let resultText = '';
-
-    if (isFinished) {
-      statusText = `${roleName(roomData.winner, this.data.role)}获胜`;
-      resultText = statusText;
-      this._showOnlineResultOnce(statusText);
-    } else if (isWaiting) {
-      statusText = '对手已离开';
-      resultText = '对手已离开房间';
-    } else if (isMyTurn) {
-      statusText = `轮到你落子（${board.pieceName(currentPlayer)}）`;
-    } else {
-      statusText = '等待对手落子';
+    if (viewState.shouldShowResult) {
+      this._showOnlineResultOnce(viewState.resultText);
     }
 
     this.setData({
-      currentPlayer,
-      statusText,
-      resultText,
-      gameOver: isFinished || isWaiting,
-      isMyTurn,
+      currentPlayer: viewState.currentPlayer,
+      statusText: viewState.statusText,
+      resultText: viewState.resultText,
+      gameOver: viewState.gameOver,
+      isMyTurn: viewState.isMyTurn,
       syncing: false,
-      boardLocked: isFinished || isWaiting || !isMyTurn,
+      boardLocked: viewState.boardLocked,
     });
     this._moveSubmitting = false;
 
-    if (this._boardComp) {
-      this._boardComp.syncBoard(roomData.board, roomData.lastMove, currentPlayer);
+    if (roomData && this._boardComp) {
+      this._boardComp.syncBoard(roomData.board, roomData.lastMove, viewState.currentPlayer);
     }
   },
 
@@ -155,9 +113,9 @@ Page({
     this._resultShown = true;
 
     wx.showModal({
-      title: '游戏结束',
+      title: '\u6e38\u620f\u7ed3\u675f',
       content: resultText,
-      confirmText: '知道了',
+      confirmText: '\u77e5\u9053\u4e86',
       showCancel: false,
     });
   },
@@ -169,7 +127,7 @@ Page({
       const nextPlayer = piece === board.BLACK ? board.WHITE : board.BLACK;
       this.setData({
         currentPlayer: nextPlayer,
-        statusText: `${board.pieceName(nextPlayer)}落子`,
+        statusText: `${board.pieceName(nextPlayer)}\u843d\u5b50`,
       });
       return;
     }
@@ -179,7 +137,7 @@ Page({
       return;
     }
 
-    const expectedRole = pieceToRole(piece);
+    const expectedRole = onlineGameState.pieceToRole(piece);
     if (expectedRole !== this.data.role) {
       this._loadRoom();
       return;
@@ -190,12 +148,12 @@ Page({
       syncing: true,
       isMyTurn: false,
       boardLocked: true,
-      statusText: '正在同步落子...',
+      statusText: '\u6b63\u5728\u540c\u6b65\u843d\u5b50...',
     });
 
     roomService.placePiece(this.data.roomId, row, col)
       .catch(err => {
-        wx.showToast({ title: err.message || '落子失败', icon: 'none' });
+        wx.showToast({ title: err.message || '\u843d\u5b50\u5931\u8d25', icon: 'none' });
       })
       .finally(() => {
         this._loadRoom().finally(() => {
@@ -211,7 +169,7 @@ Page({
     }
 
     const { piece } = e.detail;
-    const resultText = `${board.pieceName(piece)} 获胜！`;
+    const resultText = `${board.pieceName(piece)} \u83b7\u80dc\uff01`;
 
     this.setData({
       gameOver: true,
@@ -220,9 +178,9 @@ Page({
     });
 
     wx.showModal({
-      title: '游戏结束',
+      title: '\u6e38\u620f\u7ed3\u675f',
       content: resultText,
-      confirmText: '再来一局',
+      confirmText: '\u518d\u6765\u4e00\u5c40',
       showCancel: false,
       success: () => {
         this._restartGame();
@@ -235,8 +193,8 @@ Page({
     if (!this._boardComp || !this._boardComp.canUndo()) return;
 
     wx.showModal({
-      title: '悔棋',
-      content: '确定要悔棋吗？',
+      title: '\u6094\u68cb',
+      content: '\u786e\u5b9a\u8981\u6094\u68cb\u5417\uff1f',
       success: (res) => {
         if (!res.confirm) return;
 
@@ -245,7 +203,7 @@ Page({
 
         this.setData({
           currentPlayer: last.piece,
-          statusText: `${board.pieceName(last.piece)}落子`,
+          statusText: `${board.pieceName(last.piece)}\u843d\u5b50`,
         });
       },
     });
@@ -255,8 +213,8 @@ Page({
     if (this.data.isOnline) return;
 
     wx.showModal({
-      title: '重新开始',
-      content: '确定要重新开始吗？',
+      title: '\u91cd\u65b0\u5f00\u59cb',
+      content: '\u786e\u5b9a\u8981\u91cd\u65b0\u5f00\u59cb\u5417\uff1f',
       success: (res) => {
         if (res.confirm) {
           this._restartGame();
@@ -268,7 +226,7 @@ Page({
   _restartGame() {
     this.setData({
       currentPlayer: board.BLACK,
-      statusText: '黑棋落子',
+      statusText: '\u9ed1\u68cb\u843d\u5b50',
       gameOver: false,
       resultText: '',
       boardLocked: false,
