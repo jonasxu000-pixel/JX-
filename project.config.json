@@ -48,5 +48,6 @@
   },
   "condition": {},
   "simulatorPluginLibVersion": {},
+  "cloudfunctionRoot": "cloudfunctions/",
   "isGameTourist": false
 }

@@ -31,6 +31,6 @@
 
   <!-- 底部信息 -->
   <view class="footer">
-    <text class="version-text">v1.0</text>
+    <text class="version-text">v1.1</text>
   </view>
 </view>

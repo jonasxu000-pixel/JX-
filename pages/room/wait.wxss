@@ -103,18 +103,6 @@
   text-align: center;
 }
 
-.btn-simulate {
-  margin-top: 60rpx;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 32rpx;
-  padding: 16rpx 40rpx;
-}
-
-.simulate-text {
-  font-size: 24rpx;
-  color: #666;
-}
-
 /* 已加入区域 */
 .joined-area {
   display: flex;

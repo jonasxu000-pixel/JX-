@@ -1,28 +1,40 @@
-// pages/room/create.js - 创建房间页面
-const room = require('../../utils/room');
+const roomService = require('../../services/roomService');
 
 Page({
   data: {
     roomId: '',
     created: false,
+    loading: false,
   },
 
-  /**
-   * 点击创建房间
-   */
   onCreateRoom() {
-    const roomId = room.generateRoomId();
-    this.setData({
-      roomId,
-      created: true,
-    });
+    if (this.data.loading || this.data.created) return;
 
-    wx.vibrateShort();
+    this.setData({ loading: true });
+    wx.showLoading({ title: '创建中...' });
+
+    roomService.createRoom()
+      .then(roomId => {
+        wx.hideLoading();
+        this.setData({
+          roomId,
+          created: true,
+        });
+        wx.vibrateShort();
+      })
+      .catch(err => {
+        console.error('创建房间失败:', err);
+        wx.hideLoading();
+        wx.showToast({
+          title: err.message || '创建失败，请重试',
+          icon: 'none',
+        });
+      })
+      .finally(() => {
+        this.setData({ loading: false });
+      });
   },
 
-  /**
-   * 复制房间号
-   */
   onCopyRoomId() {
     wx.setClipboardData({
       data: this.data.roomId,
@@ -36,18 +48,14 @@ Page({
     });
   },
 
-  /**
-   * 进入等待页面
-   */
   onEnterWait() {
+    if (!this.data.roomId) return;
+
     wx.navigateTo({
-      url: `/pages/room/wait?roomId=${this.data.roomId}&role=host`,
+      url: `/pages/room/wait?roomId=${this.data.roomId}&role=host&color=black`,
     });
   },
 
-  /**
-   * 返回首页
-   */
   onBack() {
     wx.navigateBack({
       fail: () => {

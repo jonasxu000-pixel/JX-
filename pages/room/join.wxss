@@ -79,6 +79,7 @@
   align-items: center;
   margin-bottom: 60rpx;
   backdrop-filter: blur(10rpx);
+  position: relative;
 }
 
 .input-label {
@@ -87,13 +88,14 @@
   margin-bottom: 20rpx;
 }
 
-/* 隐藏原生输入框，用下方字符显示替代 */
+/* 透明覆盖层，点击触发键盘 */
 .room-input {
-  position: fixed;
-  top: -1000rpx;
-  left: -1000rpx;
-  width: 300rpx;
-  height: 80rpx;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
 }
 
 /* 6位数字显示格子 */

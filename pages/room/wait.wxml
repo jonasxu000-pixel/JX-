@@ -18,22 +18,17 @@
       <view class="wait-icon"></view>
       <text class="wait-text">等待对手加入...</text>
       <text class="wait-hint" wx:if="{{role === 'host'}}">将房间号分享给好友即可开始对战</text>
-
-      <!-- 临时按钮：模拟加入 -->
-      <button class="btn-simulate" bindtap="onSimulateJoin">
-        <text class="simulate-text">模拟加入（调试用）</text>
-      </button>
     </view>
 
     <!-- 对手已加入 -->
     <view class="joined-area" wx:if="{{!waiting}}">
       <view class="joined-icon"></view>
       <text class="joined-text">对手已加入</text>
-      <text class="joined-hint">正在准备开始对战...</text>
+      <text class="joined-hint">正在进入对战...</text>
     </view>
   </view>
 
-  <button class="btn btn-back" bindtap="onBack">
+  <button class="btn btn-back" bindtap="onBack" wx:if="{{waiting}}">
     <text class="btn-back-text">取消等待</text>
   </button>
 </view>

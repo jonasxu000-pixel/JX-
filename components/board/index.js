@@ -157,6 +157,8 @@ Component({
      * 绘制所有已有棋子
      */
     _drawAllPieces() {
+      if (!this._boardState) return;
+
       for (let row = 0; row < board.BOARD_SIZE; row++) {
         for (let col = 0; col < board.BOARD_SIZE; col++) {
           const piece = this._boardState[row][col];
@@ -316,6 +318,33 @@ Component({
      */
     getBoardState() {
       return this._boardState;
+    },
+
+    /**
+     * Sync board from room data.
+     */
+    syncBoard(nextBoard, lastMove, currentPiece) {
+      if (!Array.isArray(nextBoard)) return;
+
+      this._boardState = Array.from({ length: board.BOARD_SIZE }, (_, row) => {
+        const sourceRow = Array.isArray(nextBoard[row]) ? nextBoard[row] : [];
+        return Array.from({ length: board.BOARD_SIZE }, (_, col) => {
+          const piece = sourceRow[col];
+          return piece === board.BLACK || piece === board.WHITE ? piece : board.EMPTY;
+        });
+      });
+
+      this._history = lastMove ? [{
+        row: lastMove.row,
+        col: lastMove.col,
+        piece: lastMove.piece,
+      }] : [];
+      this._currentPiece = currentPiece || board.BLACK;
+      this._lastMarkPos = null;
+
+      if (this._ctx && this._config) {
+        this._drawBoard(this.data.canvasWidth);
+      }
     },
   },
 });

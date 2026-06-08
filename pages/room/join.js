@@ -1,27 +1,21 @@
-// pages/room/join.js - 加入房间页面
-const room = require('../../utils/room');
+const roomService = require('../../services/roomService');
 
 Page({
   data: {
     inputRoomId: '',
+    loading: false,
   },
 
-  /**
-   * 输入房间号
-   */
   onInputRoomId(e) {
     this.setData({
       inputRoomId: e.detail.value.replace(/\D/g, '').slice(0, 6),
     });
   },
 
-  /**
-   * 点击加入房间
-   */
   onJoinRoom() {
     const { inputRoomId } = this.data;
 
-    if (!room.isValidRoomId(inputRoomId)) {
+    if (inputRoomId.length !== 6) {
       wx.showToast({
         title: '请输入6位房间号',
         icon: 'none',
@@ -29,14 +23,31 @@ Page({
       return;
     }
 
-    wx.navigateTo({
-      url: `/pages/room/wait?roomId=${inputRoomId}&role=guest`,
-    });
+    if (this.data.loading) return;
+
+    this.setData({ loading: true });
+    wx.showLoading({ title: '加入中...' });
+
+    roomService.joinRoom(inputRoomId)
+      .then(result => {
+        wx.hideLoading();
+        wx.redirectTo({
+          url: `/pages/room/wait?roomId=${inputRoomId}&role=${result.role}&color=${result.color}`,
+        });
+      })
+      .catch(err => {
+        wx.hideLoading();
+        wx.showToast({
+          title: err.message || '加入失败',
+          icon: 'none',
+          duration: 2000,
+        });
+      })
+      .finally(() => {
+        this.setData({ loading: false });
+      });
   },
 
-  /**
-   * 返回首页
-   */
   onBack() {
     wx.navigateBack({
       fail: () => {

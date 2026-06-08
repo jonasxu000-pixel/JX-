@@ -1,11 +1,13 @@
-// app.js - 应用入口
 App({
   globalData: {
-    // 游戏状态
     gameStatus: null,
   },
 
   onLaunch() {
-    console.log('App launched');
+    wx.cloud.init({
+      env: 'cloud1-d8g33m3x28826d0ab',
+      traceUser: true,
+    });
+    console.log('Cloud initialized');
   },
 });
