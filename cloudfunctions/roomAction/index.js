@@ -13,7 +13,7 @@ const BOARD_SIZE = 15;
 const EMPTY = 0;
 const BLACK = 1;
 const WHITE = 2;
-const ROOM_ACTION_VERSION = 'roomAction-20260608-self-test-match-1';
+const ROOM_ACTION_VERSION = 'roomAction-20260609-transaction-room-7';
 
 function createBoard() {
   return Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(EMPTY));
@@ -106,6 +106,67 @@ function createUniqueRoomId() {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
 
+function isTransactionConflict(err) {
+  const message = String(err && (err.message || err.errMsg || err));
+  return message.includes('TransactionConflict');
+}
+
+async function runTransactionWithRetry(updateFunction, maxAttempts = 3) {
+  let lastError;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      return await db.runTransaction(updateFunction);
+    } catch (err) {
+      lastError = err;
+      if (!isTransactionConflict(err)) throw err;
+    }
+  }
+
+  throw lastError;
+}
+
+async function joinRoomForOpenId(targetRoomId, openId) {
+  if (!targetRoomId) {
+    return { success: false, error: '房间号不能为空' };
+  }
+
+  return runTransactionWithRetry(async transaction => {
+    const roomDoc = transaction.collection('rooms').doc(targetRoomId);
+    const roomRes = await roomDoc.get();
+    const room = roomRes.data;
+
+    if (!room) {
+      return { success: false, error: '房间不存在' };
+    }
+
+    if (room.status !== 'waiting') {
+      return { success: false, error: '房间不可加入' };
+    }
+
+    if (room.host && room.host.openId === openId) {
+      return { success: false, error: '不能加入自己创建的房间' };
+    }
+
+    await roomDoc.update({
+      data: {
+        guest: _.set({
+          openId,
+          color: 'white',
+        }),
+        status: 'playing',
+        updatedAt: db.serverDate(),
+      },
+    });
+
+    return {
+      success: true,
+      role: 'guest',
+      color: 'white',
+    };
+  });
+}
+
 async function placePieceForOpenId(targetRoomId, targetRow, targetCol, openId) {
   if (!targetRoomId) {
     return { success: false, error: '房间号不能为空' };
@@ -115,64 +176,67 @@ async function placePieceForOpenId(targetRoomId, targetRow, targetCol, openId) {
     return { success: false, error: '落子位置无效' };
   }
 
-  const roomRes = await rooms.doc(targetRoomId).get();
-  const room = roomRes.data;
+  return runTransactionWithRetry(async transaction => {
+    const roomDoc = transaction.collection('rooms').doc(targetRoomId);
+    const roomRes = await roomDoc.get();
+    const room = roomRes.data;
 
-  if (!room) {
-    return { success: false, error: '房间不存在' };
-  }
+    if (!room) {
+      return { success: false, error: '房间不存在' };
+    }
 
-  if (room.status !== 'playing') {
-    return { success: false, error: '当前房间不可落子' };
-  }
+    if (room.status !== 'playing') {
+      return { success: false, error: '当前房间不可落子' };
+    }
 
-  const role = getPlayerRole(room, openId);
-  if (!role) {
-    return { success: false, error: '你不在当前房间中' };
-  }
+    const role = getPlayerRole(room, openId);
+    if (!role) {
+      return { success: false, error: '你不在当前房间中' };
+    }
 
-  if (room.currentTurn !== role) {
-    return { success: false, error: '还没有轮到你落子' };
-  }
+    if (room.currentTurn !== role) {
+      return { success: false, error: '还没有轮到你落子' };
+    }
 
-  const nextBoard = normalizeBoard(room.board);
-  if (nextBoard[targetRow][targetCol] !== EMPTY) {
-    return { success: false, error: '当前位置已有棋子' };
-  }
+    const nextBoard = normalizeBoard(room.board);
+    if (nextBoard[targetRow][targetCol] !== EMPTY) {
+      return { success: false, error: '当前位置已有棋子' };
+    }
 
-  const piece = roleToPiece(role);
-  nextBoard[targetRow][targetCol] = piece;
+    const piece = roleToPiece(role);
+    nextBoard[targetRow][targetCol] = piece;
 
-  const hasWinner = checkWin(nextBoard, targetRow, targetCol, piece);
-  const nextStatus = hasWinner ? 'finished' : 'playing';
-  const winner = hasWinner ? role : null;
-  const nextTurn = hasWinner ? role : nextRole(role);
-  const lastMove = {
-    row: targetRow,
-    col: targetCol,
-    piece,
-    role,
-  };
+    const hasWinner = checkWin(nextBoard, targetRow, targetCol, piece);
+    const nextStatus = hasWinner ? 'finished' : 'playing';
+    const winner = hasWinner ? role : null;
+    const nextTurn = hasWinner ? role : nextRole(role);
+    const lastMove = {
+      row: targetRow,
+      col: targetCol,
+      piece,
+      role,
+    };
 
-  await rooms.doc(targetRoomId).update({
-    data: {
-      board: _.set(nextBoard),
-      lastMove: _.set(lastMove),
+    await roomDoc.update({
+      data: {
+        board: _.set(nextBoard),
+        lastMove: _.set(lastMove),
+        currentTurn: nextTurn,
+        winner,
+        status: nextStatus,
+        updatedAt: db.serverDate(),
+      },
+    });
+
+    return {
+      success: true,
+      board: nextBoard,
+      lastMove,
       currentTurn: nextTurn,
       winner,
       status: nextStatus,
-      updatedAt: db.serverDate(),
-    },
+    };
   });
-
-  return {
-    success: true,
-    board: nextBoard,
-    lastMove,
-    currentTurn: nextTurn,
-    winner,
-    status: nextStatus,
-  };
 }
 
 exports.main = async (event = {}) => {
@@ -388,43 +452,192 @@ exports.main = async (event = {}) => {
         }
       }
 
-      case 'joinRoom': {
-        if (!roomId) {
-          return { success: false, error: '房间号不能为空' };
+      case 'selfTestConcurrentMove': {
+        const testRoomId = `TEST_CONCURRENT_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+        try {
+          await rooms.add({
+            data: {
+              _id: testRoomId,
+              host: {
+                openId: callerOpenId,
+                color: 'black',
+              },
+              guest: {
+                openId: '__self_test_guest__',
+                color: 'white',
+              },
+              currentTurn: 'host',
+              board: createBoard(),
+              lastMove: null,
+              winner: null,
+              status: 'playing',
+              createdAt: db.serverDate(),
+              updatedAt: db.serverDate(),
+            },
+          });
+
+          const results = await Promise.all([
+            placePieceForOpenId(testRoomId, 4, 4, callerOpenId),
+            placePieceForOpenId(testRoomId, 4, 5, callerOpenId),
+          ]);
+          const verifyRes = await rooms.doc(testRoomId).get();
+          const testRoom = verifyRes.data || {};
+          const savedBoard = normalizeBoard(testRoom.board);
+          const succeeded = results.filter(result => result.success).length;
+          const rejected = results.length - succeeded;
+          const savedBlackPieces = savedBoard[4].slice(4, 6).filter(piece => piece === BLACK).length;
+          const ok = succeeded === 1
+            && rejected === 1
+            && savedBlackPieces === 1
+            && testRoom.currentTurn === 'guest';
+
+          return {
+            success: ok,
+            version: ROOM_ACTION_VERSION,
+            succeeded,
+            rejected,
+            savedBlackPieces,
+            currentTurn: testRoom.currentTurn,
+            lastMove: testRoom.lastMove,
+            error: ok ? '' : '并发落子事务自检失败',
+          };
+        } finally {
+          await rooms.doc(testRoomId).remove().catch(() => {});
+        }
+      }
+
+      case 'selfTestWatchRoom': {
+        const mode = event.mode || '';
+
+        if (mode === 'create') {
+          const testRoomId = `TEST_WATCH_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+          await rooms.add({
+            data: {
+              _id: testRoomId,
+              host: {
+                openId: callerOpenId,
+                color: 'black',
+              },
+              guest: {
+                openId: '__self_test_guest__',
+                color: 'white',
+              },
+              currentTurn: 'host',
+              board: createBoard(),
+              lastMove: null,
+              winner: null,
+              status: 'playing',
+              createdAt: db.serverDate(),
+              updatedAt: db.serverDate(),
+            },
+          });
+
+          return {
+            success: true,
+            version: ROOM_ACTION_VERSION,
+            roomId: testRoomId,
+          };
+        }
+
+        if (!roomId || !roomId.startsWith('TEST_WATCH_')) {
+          return { success: false, error: '无效的 watch 自检房间' };
         }
 
         const roomRes = await rooms.doc(roomId).get();
         const room = roomRes.data;
-
-        if (!room) {
-          return { success: false, error: '房间不存在' };
+        if (!room || getPlayerRole(room, callerOpenId) !== 'host') {
+          return { success: false, error: '无权操作 watch 自检房间' };
         }
 
-        if (room.status !== 'waiting') {
-          return { success: false, error: '房间不可加入' };
+        if (mode === 'move') {
+          const result = await placePieceForOpenId(roomId, 7, 7, callerOpenId);
+          return {
+            ...result,
+            version: ROOM_ACTION_VERSION,
+          };
         }
 
-        if (room.host && room.host.openId === callerOpenId) {
-          return { success: false, error: '不能加入自己创建的房间' };
+        if (mode === 'cleanup') {
+          await rooms.doc(roomId).remove();
+          return {
+            success: true,
+            version: ROOM_ACTION_VERSION,
+            cleaned: true,
+          };
         }
 
-        await rooms.doc(roomId).update({
-          data: {
-            guest: _.set({
-              openId: callerOpenId,
-              color: 'white',
-            }),
-            status: 'playing',
-            updatedAt: db.serverDate(),
-          },
-        });
-
-        return {
-          success: true,
-          role: 'guest',
-          color: 'white',
-        };
+        return { success: false, error: '未知的 watch 自检模式' };
       }
+
+      case 'selfTestJoinRoom': {
+        let testRoomId = '';
+
+        try {
+          for (let attempt = 0; attempt < 5; attempt += 1) {
+            testRoomId = createUniqueRoomId();
+            try {
+              await rooms.add({
+                data: {
+                  _id: testRoomId,
+                  host: {
+                    openId: callerOpenId,
+                    color: 'black',
+                  },
+                  guest: null,
+                  currentTurn: 'host',
+                  board: createBoard(),
+                  lastMove: null,
+                  winner: null,
+                  status: 'waiting',
+                  createdAt: db.serverDate(),
+                  updatedAt: db.serverDate(),
+                },
+              });
+              break;
+            } catch (err) {
+              testRoomId = '';
+              if (attempt === 4) throw err;
+            }
+          }
+
+          const guestOpenIds = ['__self_test_join_guest_a__', '__self_test_join_guest_b__'];
+          const results = await Promise.all(guestOpenIds.map(openId => joinRoomForOpenId(testRoomId, openId)));
+          const accepted = results.find(result => result.success) || {};
+          const succeeded = results.filter(result => result.success).length;
+          const rejected = results.length - succeeded;
+          const verifyRes = await rooms.doc(testRoomId).get();
+          const testRoom = verifyRes.data || {};
+          const ok = succeeded === 1
+            && rejected === 1
+            && accepted.role === 'guest'
+            && accepted.color === 'white'
+            && testRoom.status === 'playing'
+            && testRoom.guest
+            && guestOpenIds.includes(testRoom.guest.openId)
+            && testRoom.guest.color === 'white';
+
+          return {
+            success: ok,
+            version: ROOM_ACTION_VERSION,
+            roomId: testRoomId,
+            role: accepted.role,
+            color: accepted.color,
+            status: testRoom.status,
+            guestColor: testRoom.guest && testRoom.guest.color,
+            succeeded,
+            rejected,
+            error: ok ? '' : '加入房间云端自检失败',
+          };
+        } finally {
+          if (testRoomId) {
+            await rooms.doc(testRoomId).remove().catch(() => {});
+          }
+        }
+      }
+
+      case 'joinRoom':
+        return joinRoomForOpenId(roomId, callerOpenId);
 
       case 'placePiece':
         return placePieceForOpenId(roomId, row, col, callerOpenId);

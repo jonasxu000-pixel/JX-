@@ -88,10 +88,6 @@ Page({
   _applyRoomData(roomData) {
     const viewState = onlineGameState.deriveOnlineGameState(roomData, this.data.role);
 
-    if (viewState.shouldShowResult) {
-      this._showOnlineResultOnce(viewState.resultText);
-    }
-
     this.setData({
       currentPlayer: viewState.currentPlayer,
       statusText: viewState.statusText,
@@ -105,6 +101,10 @@ Page({
 
     if (roomData && this._boardComp) {
       this._boardComp.syncBoard(roomData.board, roomData.lastMove, viewState.currentPlayer);
+    }
+
+    if (viewState.shouldShowResult) {
+      this._showOnlineResultOnce(viewState.resultText);
     }
   },
 

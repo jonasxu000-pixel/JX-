@@ -3,6 +3,8 @@ const path = require('path');
 
 const rooms = new Map();
 let currentOpenId = '';
+let transactionQueue = Promise.resolve();
+let transactionConflictsRemaining = 0;
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -24,6 +26,26 @@ const db = {
   },
   serverDate() {
     return new Date('2026-06-08T00:00:00.000Z');
+  },
+  runTransaction(updateFunction) {
+    const transactionRun = transactionQueue.then(async () => {
+      if (transactionConflictsRemaining > 0) {
+        transactionConflictsRemaining -= 1;
+        const err = new Error('database request failed [ResourceUnavailable.TransactionConflict]');
+        err.errCode = -501001;
+        throw err;
+      }
+
+      const transaction = {
+        collection(name) {
+          return db.collection(name);
+        },
+      };
+      return updateFunction(transaction);
+    });
+
+    transactionQueue = transactionRun.catch(() => {});
+    return transactionRun;
   },
   collection(name) {
     if (name !== 'rooms') throw new Error(`unexpected collection: ${name}`);
@@ -177,6 +199,59 @@ async function verifyGuestWhiteWin(roomAction) {
   assert(win.board[2].slice(0, 5).every(piece => piece === 2), 'guest white line missing');
 }
 
+async function verifyConcurrentMoveIsAtomic(roomAction) {
+  const roomId = await createPlayingRoom(roomAction);
+
+  currentOpenId = 'host-openid';
+  const results = await Promise.all([
+    roomAction.main({ action: 'placePiece', roomId, row: 4, col: 4 }),
+    roomAction.main({ action: 'placePiece', roomId, row: 4, col: 5 }),
+  ]);
+
+  const succeeded = results.filter(result => result.success);
+  const rejected = results.filter(result => !result.success);
+  const room = rooms.get(roomId);
+  const savedPieces = room.board[4].slice(4, 6).filter(piece => piece === 1);
+
+  assert(succeeded.length === 1, 'concurrent same-turn moves should only succeed once');
+  assert(rejected.length === 1, 'concurrent same-turn moves should reject one request');
+  assert(savedPieces.length === 1, 'concurrent same-turn moves should save exactly one black piece');
+  assert(room.currentTurn === 'guest', 'concurrent move should switch turn exactly once');
+}
+
+async function verifyTransactionConflictRetries(roomAction) {
+  const roomId = await createPlayingRoom(roomAction);
+  transactionConflictsRemaining = 1;
+
+  const result = await call(roomAction, 'host-openid', {
+    action: 'placePiece',
+    roomId,
+    row: 5,
+    col: 5,
+  });
+
+  assert(result.lastMove.row === 5 && result.lastMove.col === 5, 'transaction conflict retry should save move');
+}
+
+async function verifyConcurrentJoinIsAtomic(roomAction) {
+  const created = await call(roomAction, 'host-openid', { action: 'createRoom' });
+
+  currentOpenId = 'guest-a-openid';
+  const firstJoin = roomAction.main({ action: 'joinRoom', roomId: created.roomId });
+  currentOpenId = 'guest-b-openid';
+  const secondJoin = roomAction.main({ action: 'joinRoom', roomId: created.roomId });
+  const results = await Promise.all([firstJoin, secondJoin]);
+
+  const succeeded = results.filter(result => result.success);
+  const rejected = results.filter(result => !result.success);
+  const room = rooms.get(created.roomId);
+
+  assert(succeeded.length === 1, 'concurrent joins should only succeed once');
+  assert(rejected.length === 1, 'concurrent joins should reject one guest');
+  assert(room.status === 'playing', 'concurrent join should start the game once');
+  assert(['guest-a-openid', 'guest-b-openid'].includes(room.guest.openId), 'concurrent join should save one guest');
+}
+
 async function verifySelfTestMove(roomAction) {
   const result = await call(roomAction, 'host-openid', { action: 'selfTestMove' });
   assert(result.version, 'self test should return version');
@@ -197,14 +272,63 @@ async function verifySelfTestMatch(roomAction) {
   assert(result.lastMove && result.lastMove.piece === 1, 'match self test last move should be black');
 }
 
+async function verifySelfTestConcurrentMove(roomAction) {
+  const result = await call(roomAction, 'host-openid', { action: 'selfTestConcurrentMove' });
+  assert(result.version, 'concurrent self test should return version');
+  assert(result.succeeded === 1, 'concurrent self test should succeed exactly once');
+  assert(result.rejected === 1, 'concurrent self test should reject exactly once');
+  assert(result.savedBlackPieces === 1, 'concurrent self test should save exactly one black piece');
+  assert(result.currentTurn === 'guest', 'concurrent self test should switch turn exactly once');
+}
+
+async function verifySelfTestWatchRoom(roomAction) {
+  const created = await call(roomAction, 'host-openid', {
+    action: 'selfTestWatchRoom',
+    mode: 'create',
+  });
+  assert(created.roomId.startsWith('TEST_WATCH_'), 'watch self test should create a temporary room');
+
+  const moved = await call(roomAction, 'host-openid', {
+    action: 'selfTestWatchRoom',
+    mode: 'move',
+    roomId: created.roomId,
+  });
+  assert(moved.lastMove.row === 7 && moved.lastMove.col === 7, 'watch self test should save center move');
+  assert(moved.lastMove.piece === 1, 'watch self test should save black piece');
+
+  const cleaned = await call(roomAction, 'host-openid', {
+    action: 'selfTestWatchRoom',
+    mode: 'cleanup',
+    roomId: created.roomId,
+  });
+  assert(cleaned.cleaned, 'watch self test should clean temporary room');
+}
+
+async function verifySelfTestJoinRoom(roomAction) {
+  const result = await call(roomAction, 'host-openid', { action: 'selfTestJoinRoom' });
+  assert(/^\d{6}$/.test(result.roomId), 'join self test should use a 6 digit room code');
+  assert(result.role === 'guest', 'join self test should return guest role');
+  assert(result.color === 'white', 'join self test should return white color');
+  assert(result.status === 'playing', 'join self test should start the game');
+  assert(result.guestColor === 'white', 'join self test should save guest white color');
+  assert(result.succeeded === 1, 'join self test should only accept one concurrent guest');
+  assert(result.rejected === 1, 'join self test should reject one concurrent guest');
+}
+
 async function main() {
   installMocks();
   const roomAction = loadRoomAction();
 
   await verifyHostBlackWin(roomAction);
   await verifyGuestWhiteWin(roomAction);
+  await verifyConcurrentMoveIsAtomic(roomAction);
+  await verifyTransactionConflictRetries(roomAction);
+  await verifyConcurrentJoinIsAtomic(roomAction);
   await verifySelfTestMove(roomAction);
   await verifySelfTestMatch(roomAction);
+  await verifySelfTestConcurrentMove(roomAction);
+  await verifySelfTestWatchRoom(roomAction);
+  await verifySelfTestJoinRoom(roomAction);
 
   console.log('roomAction verification ok');
 }
