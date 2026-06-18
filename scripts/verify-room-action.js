@@ -199,6 +199,58 @@ async function verifyGuestWhiteWin(roomAction) {
   assert(win.board[2].slice(0, 5).every(piece => piece === 2), 'guest white line missing');
 }
 
+async function verifyFullBoardDraw(roomAction) {
+  const roomId = 'draw-room';
+  const drawBoard = Array.from({ length: 15 }, (_, row) => (
+    Array.from({ length: 15 }, (_, col) => ((row + 2 * col) % 4 < 2 ? 1 : 2))
+  ));
+  drawBoard[14][13] = 0;
+
+  rooms.set(roomId, {
+    _id: roomId,
+    host: { openId: 'host-openid', color: 'black' },
+    guest: { openId: 'guest-openid', color: 'white' },
+    currentTurn: 'host',
+    board: drawBoard,
+    lastMove: null,
+    winner: null,
+    status: 'playing',
+  });
+
+  const result = await call(roomAction, 'host-openid', {
+    action: 'placePiece',
+    roomId,
+    row: 14,
+    col: 13,
+  });
+
+  assert(result.status === 'finished', 'full board draw should finish the game');
+  assert(result.winner === null, 'full board draw should not have a winner');
+}
+
+async function verifyRestartRoom(roomAction) {
+  const roomId = await createPlayingRoom(roomAction);
+
+  await call(roomAction, 'host-openid', { action: 'placePiece', roomId, row: 0, col: 0 });
+  await call(roomAction, 'guest-openid', { action: 'placePiece', roomId, row: 1, col: 0 });
+  await call(roomAction, 'host-openid', { action: 'placePiece', roomId, row: 0, col: 1 });
+  await call(roomAction, 'guest-openid', { action: 'placePiece', roomId, row: 1, col: 1 });
+  await call(roomAction, 'host-openid', { action: 'placePiece', roomId, row: 0, col: 2 });
+  await call(roomAction, 'guest-openid', { action: 'placePiece', roomId, row: 1, col: 2 });
+  await call(roomAction, 'host-openid', { action: 'placePiece', roomId, row: 0, col: 3 });
+  await call(roomAction, 'guest-openid', { action: 'placePiece', roomId, row: 1, col: 3 });
+  await call(roomAction, 'host-openid', { action: 'placePiece', roomId, row: 0, col: 4 });
+
+  const restarted = await call(roomAction, 'guest-openid', { action: 'restartRoom', roomId });
+  assert(restarted.status === 'playing', 'restart should put room back into playing state');
+  assert(restarted.currentTurn === 'host', 'restart should let host black move first');
+  assert(restarted.winner === null, 'restart should clear winner');
+  assert(restarted.board.every(row => row.every(piece => piece === 0)), 'restart should clear board');
+
+  await expectFail(roomAction, 'outsider-openid', { action: 'restartRoom', roomId }, 'outsider restart');
+  await expectFail(roomAction, 'host-openid', { action: 'restartRoom', roomId }, 'restart while playing');
+}
+
 async function verifyConcurrentMoveIsAtomic(roomAction) {
   const roomId = await createPlayingRoom(roomAction);
 
@@ -315,15 +367,31 @@ async function verifySelfTestJoinRoom(roomAction) {
   assert(result.rejected === 1, 'join self test should reject one concurrent guest');
 }
 
+async function verifyDiagnosticsDisabledByDefault(roomAction) {
+  delete process.env.ENABLE_ROOM_DIAGNOSTICS;
+  await expectFail(roomAction, 'host-openid', { action: 'selfTestMove' }, 'production diagnostics');
+}
+
+async function verifyHealthPing(roomAction) {
+  delete process.env.ENABLE_ROOM_DIAGNOSTICS;
+  const result = await call(roomAction, 'host-openid', { action: 'ping' });
+  assert(result.version === 'roomAction-20260611-release-candidate-2', 'health ping should expose deployed version');
+}
+
 async function main() {
   installMocks();
   const roomAction = loadRoomAction();
 
   await verifyHostBlackWin(roomAction);
   await verifyGuestWhiteWin(roomAction);
+  await verifyFullBoardDraw(roomAction);
+  await verifyRestartRoom(roomAction);
   await verifyConcurrentMoveIsAtomic(roomAction);
   await verifyTransactionConflictRetries(roomAction);
   await verifyConcurrentJoinIsAtomic(roomAction);
+  await verifyDiagnosticsDisabledByDefault(roomAction);
+  await verifyHealthPing(roomAction);
+  process.env.ENABLE_ROOM_DIAGNOSTICS = 'true';
   await verifySelfTestMove(roomAction);
   await verifySelfTestMatch(roomAction);
   await verifySelfTestConcurrentMove(roomAction);
@@ -338,4 +406,7 @@ main()
     console.error(err);
     process.exitCode = 1;
   })
-  .finally(restoreMocks);
+  .finally(() => {
+    delete process.env.ENABLE_ROOM_DIAGNOSTICS;
+    restoreMocks();
+  });

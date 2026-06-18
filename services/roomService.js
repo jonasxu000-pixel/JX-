@@ -2,10 +2,6 @@
  * Room service: client wrapper for cloud room operations.
  */
 
-const ROOM_SERVICE_VERSION = 'roomService-20260607-verify-1';
-
-console.log('[roomService]', ROOM_SERVICE_VERSION);
-
 function assertCloudResult(res, fallbackMessage) {
   if (!res.result || !res.result.success) {
     throw new Error((res.result && res.result.error) || fallbackMessage);
@@ -18,13 +14,6 @@ function createRoom() {
     name: 'roomAction',
     data: { action: 'createRoom' },
   }).then(res => assertCloudResult(res, '创建失败').roomId);
-}
-
-function selfTestMove() {
-  return wx.cloud.callFunction({
-    name: 'roomAction',
-    data: { action: 'selfTestMove' },
-  }).then(res => assertCloudResult(res, '云端自检失败'));
 }
 
 function joinRoom(roomId) {
@@ -41,7 +30,7 @@ function joinRoom(roomId) {
   });
 }
 
-function watchRoom(roomId, callback) {
+function watchRoom(roomId, callback, errorCallback) {
   const db = wx.cloud.database();
 
   return db.collection('rooms').doc(roomId).watch({
@@ -60,7 +49,11 @@ function watchRoom(roomId, callback) {
       }
     },
     onError(err) {
-      console.error('房间监听错误:', err);
+      if (errorCallback) {
+        errorCallback(err);
+      } else {
+        console.error('房间监听错误:', err);
+      }
     },
   });
 }
@@ -70,18 +63,18 @@ function getRoom(roomId) {
   return db.collection('rooms').doc(roomId).get().then(res => res.data);
 }
 
-function updateRoom(roomId, data) {
-  return wx.cloud.callFunction({
-    name: 'roomAction',
-    data: { action: 'updateRoom', roomId, data },
-  }).then(res => assertCloudResult(res, '更新失败'));
-}
-
 function placePiece(roomId, row, col) {
   return wx.cloud.callFunction({
     name: 'roomAction',
     data: { action: 'placePiece', roomId, row, col },
   }).then(res => assertCloudResult(res, '落子失败'));
+}
+
+function restartRoom(roomId) {
+  return wx.cloud.callFunction({
+    name: 'roomAction',
+    data: { action: 'restartRoom', roomId },
+  }).then(res => assertCloudResult(res, '再来一局失败'));
 }
 
 function leaveRoom(roomId) {
@@ -100,14 +93,12 @@ function getOpenId() {
 }
 
 module.exports = {
-  ROOM_SERVICE_VERSION,
   createRoom,
-  selfTestMove,
   joinRoom,
   watchRoom,
   getRoom,
-  updateRoom,
   placePiece,
+  restartRoom,
   leaveRoom,
   getOpenId,
 };

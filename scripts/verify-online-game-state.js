@@ -92,6 +92,21 @@ function verifyResults() {
     boardLocked: true,
     shouldShowResult: true,
   }, 'guest sees own win');
+
+  const drawRoom = {
+    status: 'finished',
+    currentTurn: 'host',
+    winner: null,
+  };
+
+  assertState(deriveOnlineGameState(drawRoom, 'host'), {
+    statusText: '\u548c\u68cb',
+    resultText: '\u548c\u68cb',
+    gameOver: true,
+    isMyTurn: false,
+    boardLocked: true,
+    shouldShowResult: true,
+  }, 'draw result');
 }
 
 function verifyWaitingAndMissingRoom() {

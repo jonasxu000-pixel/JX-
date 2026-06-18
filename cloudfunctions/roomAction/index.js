@@ -13,7 +13,14 @@ const BOARD_SIZE = 15;
 const EMPTY = 0;
 const BLACK = 1;
 const WHITE = 2;
-const ROOM_ACTION_VERSION = 'roomAction-20260609-transaction-room-7';
+const ROOM_ACTION_VERSION = 'roomAction-20260611-release-candidate-2';
+const DIAGNOSTIC_ACTIONS = new Set([
+  'selfTestMove',
+  'selfTestMatch',
+  'selfTestConcurrentMove',
+  'selfTestWatchRoom',
+  'selfTestJoinRoom',
+]);
 
 function createBoard() {
   return Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(EMPTY));
@@ -80,6 +87,10 @@ function checkWin(board, row, col, piece) {
 
     return count >= 5;
   });
+}
+
+function isBoardFull(board) {
+  return board.every(row => row.every(piece => piece !== EMPTY));
 }
 
 function getPlayerRole(room, openId) {
@@ -207,9 +218,10 @@ async function placePieceForOpenId(targetRoomId, targetRow, targetCol, openId) {
     nextBoard[targetRow][targetCol] = piece;
 
     const hasWinner = checkWin(nextBoard, targetRow, targetCol, piece);
-    const nextStatus = hasWinner ? 'finished' : 'playing';
+    const hasDraw = !hasWinner && isBoardFull(nextBoard);
+    const nextStatus = hasWinner || hasDraw ? 'finished' : 'playing';
     const winner = hasWinner ? role : null;
-    const nextTurn = hasWinner ? role : nextRole(role);
+    const nextTurn = nextStatus === 'finished' ? role : nextRole(role);
     const lastMove = {
       row: targetRow,
       col: targetCol,
@@ -239,12 +251,67 @@ async function placePieceForOpenId(targetRoomId, targetRow, targetCol, openId) {
   });
 }
 
+async function restartRoomForOpenId(targetRoomId, openId) {
+  if (!targetRoomId) {
+    return { success: false, error: '房间号不能为空' };
+  }
+
+  return runTransactionWithRetry(async transaction => {
+    const roomDoc = transaction.collection('rooms').doc(targetRoomId);
+    const roomRes = await roomDoc.get();
+    const room = roomRes.data;
+
+    if (!room) {
+      return { success: false, error: '房间不存在' };
+    }
+
+    if (!getPlayerRole(room, openId)) {
+      return { success: false, error: '你不在当前房间中' };
+    }
+
+    if (!room.host || !room.guest) {
+      return { success: false, error: '等待双方进入后才能再来一局' };
+    }
+
+    if (room.status !== 'finished') {
+      return { success: false, error: '当前对局尚未结束' };
+    }
+
+    const nextBoard = createBoard();
+    await roomDoc.update({
+      data: {
+        board: _.set(nextBoard),
+        lastMove: null,
+        currentTurn: 'host',
+        winner: null,
+        status: 'playing',
+        updatedAt: db.serverDate(),
+      },
+    });
+
+    return {
+      success: true,
+      board: nextBoard,
+      currentTurn: 'host',
+      winner: null,
+      status: 'playing',
+    };
+  });
+}
+
 exports.main = async (event = {}) => {
   const { action, roomId, row, col } = event;
   const wxContext = cloud.getWXContext();
   const callerOpenId = wxContext.OPENID;
 
   try {
+    if (DIAGNOSTIC_ACTIONS.has(action) && process.env.ENABLE_ROOM_DIAGNOSTICS !== 'true') {
+      return {
+        success: false,
+        error: '诊断操作未启用',
+      };
+    }
+
     switch (action) {
       case 'ping':
         return {
@@ -641,6 +708,9 @@ exports.main = async (event = {}) => {
 
       case 'placePiece':
         return placePieceForOpenId(roomId, row, col, callerOpenId);
+
+      case 'restartRoom':
+        return restartRoomForOpenId(roomId, callerOpenId);
 
       case 'updateRoom':
         return {

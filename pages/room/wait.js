@@ -18,8 +18,15 @@ Page({
     this._startWatch();
   },
 
+  onShow() {
+    if (!this.data.roomId || !this._watcher) return;
+    this._startWatch();
+  },
+
   _startWatch() {
     const { roomId } = this.data;
+    this._clearWatchRestart();
+    if (this._watcher) this._watcher.close();
 
     this._watcher = roomService.watchRoom(roomId, (roomData) => {
       if (!roomData) {
@@ -34,7 +41,24 @@ Page({
           url: `/pages/game/game?roomId=${roomId}&role=${this.data.role}&color=${this.data.color}`,
         });
       }
+    }, () => {
+      this._scheduleWatchRestart();
     });
+  },
+
+  _scheduleWatchRestart() {
+    if (this._restartWatchTimer) return;
+
+    this._restartWatchTimer = setTimeout(() => {
+      this._restartWatchTimer = null;
+      this._startWatch();
+    }, 1000);
+  },
+
+  _clearWatchRestart() {
+    if (!this._restartWatchTimer) return;
+    clearTimeout(this._restartWatchTimer);
+    this._restartWatchTimer = null;
   },
 
   onCopyRoomId() {
@@ -75,6 +99,8 @@ Page({
   },
 
   onUnload() {
+    this._clearWatchRestart();
+
     if (this._watcher) {
       this._watcher.close();
       this._watcher = null;

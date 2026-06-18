@@ -34,7 +34,9 @@ function deriveOnlineGameState(roomData, myRole) {
     && !roomData.winner;
 
   if (isFinished) {
-    const resultText = getWinnerText(roomData.winner, myRole);
+    const resultText = roomData.winner
+      ? getWinnerText(roomData.winner, myRole)
+      : '\u548c\u68cb';
     return {
       currentPlayer,
       statusText: resultText,

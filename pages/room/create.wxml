@@ -11,9 +11,6 @@
       <text class="btn-text">立即创建</text>
     </button>
 
-    <button class="btn btn-secondary" bindtap="onSelfTestMove">
-      <text class="btn-secondary-text">云端自检</text>
-    </button>
   </view>
 
   <view class="content {{created ? '' : 'hidden'}}">

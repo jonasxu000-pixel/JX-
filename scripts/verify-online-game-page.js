@@ -2,8 +2,10 @@ const path = require('path');
 const board = require('../utils/board');
 
 const roomWatchers = new Map();
+const roomWatchErrors = new Map();
 const modalCalls = [];
 const eventOrder = [];
+const cloudCalls = [];
 let currentRoom = null;
 let capturedPageDefinition = null;
 
@@ -28,6 +30,11 @@ function emitRoom(roomData) {
       docChanges: [{ dataType: 'update' }],
     });
   });
+}
+
+function emitWatchError(roomId, error = new Error('network changed')) {
+  const handlers = roomWatchErrors.get(roomId) || [];
+  handlers.forEach(onError => onError(error));
 }
 
 function createEmptyRoom(roomId = '123456') {
@@ -80,7 +87,8 @@ function installMiniProgramMocks() {
 
   global.wx = {
     cloud: {
-      callFunction() {
+      callFunction(options) {
+        cloudCalls.push(options.data);
         return Promise.resolve({ result: { success: true } });
       },
       database() {
@@ -92,14 +100,19 @@ function installMiniProgramMocks() {
                   get() {
                     return Promise.resolve({ data: clone(currentRoom) });
                   },
-                  watch({ onChange }) {
+                  watch({ onChange, onError }) {
                     const watchers = roomWatchers.get(roomId) || [];
                     watchers.push(onChange);
                     roomWatchers.set(roomId, watchers);
+                    const errorHandlers = roomWatchErrors.get(roomId) || [];
+                    errorHandlers.push(onError);
+                    roomWatchErrors.set(roomId, errorHandlers);
                     return {
                       close() {
                         const next = (roomWatchers.get(roomId) || []).filter(item => item !== onChange);
                         roomWatchers.set(roomId, next);
+                        const nextErrors = (roomWatchErrors.get(roomId) || []).filter(item => item !== onError);
+                        roomWatchErrors.set(roomId, nextErrors);
                       },
                     };
                   },
@@ -115,6 +128,9 @@ function installMiniProgramMocks() {
       modalCalls.push(options);
     },
     showToast() {},
+    reLaunch(options) {
+      eventOrder.push(`${options.url}:reLaunch`);
+    },
   };
 }
 
@@ -151,6 +167,33 @@ async function verifyWatchSyncAndTurns() {
 
   host.page._watcher.close();
   guest.page._watcher.close();
+}
+
+async function verifyWatchReconnectAndResume() {
+  currentRoom = createEmptyRoom('654321');
+  const host = createPage('host');
+  await flush();
+
+  assert((roomWatchers.get(currentRoom._id) || []).length === 1, 'host should start one room watcher');
+  const originalSetTimeout = global.setTimeout;
+  global.setTimeout = callback => {
+    setImmediate(callback);
+    return 1;
+  };
+  try {
+    emitWatchError(currentRoom._id);
+    await flush();
+    await flush();
+    assert((roomWatchers.get(currentRoom._id) || []).length === 1, 'watch error should replace the failed watcher');
+  } finally {
+    global.setTimeout = originalSetTimeout;
+  }
+
+  host.page.onShow();
+  await flush();
+  assert((roomWatchers.get(currentRoom._id) || []).length === 1, 'resume should refresh without duplicate watchers');
+
+  if (host.page._watcher) host.page._watcher.close();
 }
 
 async function verifyWinnerViewsAndFinalBoardOrder(winner) {
@@ -192,6 +235,32 @@ async function verifyWinnerViewsAndFinalBoardOrder(winner) {
   guest.page._watcher.close();
 }
 
+async function verifyOnlineEndActions() {
+  currentRoom = createEmptyRoom();
+  const host = createPage('host');
+  await flush();
+
+  const finishedRoom = createEmptyRoom();
+  for (let col = 0; col < 5; col += 1) finishedRoom.board[0][col] = board.BLACK;
+  finishedRoom.lastMove = { row: 0, col: 4, piece: board.BLACK, role: 'host' };
+  finishedRoom.currentTurn = 'host';
+  finishedRoom.winner = 'host';
+  finishedRoom.status = 'finished';
+  emitRoom(finishedRoom);
+
+  cloudCalls.length = 0;
+  host.page._onRestartOnline();
+  await flush();
+  assert(cloudCalls.some(call => call.action === 'restartRoom' && call.roomId === currentRoom._id), 'online restart should call restartRoom');
+
+  host.page._onExitOnline();
+  await flush();
+  assert(cloudCalls.some(call => call.action === 'leaveRoom' && call.roomId === currentRoom._id), 'online exit should leave room');
+  assert(eventOrder.includes('/pages/index/index:reLaunch'), 'online exit should return to index');
+
+  if (host.page._watcher) host.page._watcher.close();
+}
+
 async function main() {
   installMiniProgramMocks();
   const gamePath = path.resolve(__dirname, '../pages/game/game.js');
@@ -199,8 +268,10 @@ async function main() {
   require(gamePath);
 
   await verifyWatchSyncAndTurns();
+  await verifyWatchReconnectAndResume();
   await verifyWinnerViewsAndFinalBoardOrder('host');
   await verifyWinnerViewsAndFinalBoardOrder('guest');
+  await verifyOnlineEndActions();
 
   console.log('online game page verification ok');
 }

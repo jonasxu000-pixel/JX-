@@ -17,4 +17,9 @@
     <button class="action-btn undo-btn" bindtap="_onUndo">悔棋</button>
     <button class="action-btn restart-btn" bindtap="_onRestart">重新开始</button>
   </view>
+
+  <view class="action-bar" wx:if="{{isOnline && gameOver}}">
+    <button class="action-btn restart-btn" bindtap="_onRestartOnline">再来一局</button>
+    <button class="action-btn exit-btn" bindtap="_onExitOnline">返回首页</button>
+  </view>
 </view>

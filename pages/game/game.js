@@ -26,6 +26,8 @@ Page({
   _leaving: false,
   _resultShown: false,
   _moveSubmitting: false,
+  _restartWatchTimer: null,
+  _restartSubmitting: false,
 
   onLoad(options = {}) {
     if (!options.roomId) return;
@@ -53,7 +55,17 @@ Page({
     }
   },
 
+  onShow() {
+    if (!this.data.isOnline || !this._boardComp || this._leaving) return;
+
+    this._clearWatchRestart();
+    this._loadRoom();
+    this._startRoomWatch();
+  },
+
   onUnload() {
+    this._clearWatchRestart();
+
     if (this._watcher) {
       this._watcher.close();
       this._watcher = null;
@@ -78,11 +90,32 @@ Page({
   },
 
   _startRoomWatch() {
+    this._clearWatchRestart();
     if (this._watcher) this._watcher.close();
 
     this._watcher = roomService.watchRoom(this.data.roomId, (roomData) => {
       this._applyRoomData(roomData);
+    }, () => {
+      this._scheduleWatchRestart();
     });
+  },
+
+  _scheduleWatchRestart() {
+    if (this._leaving || this._restartWatchTimer) return;
+
+    this._restartWatchTimer = setTimeout(() => {
+      this._restartWatchTimer = null;
+      if (this._leaving) return;
+      this._loadRoom().finally(() => {
+        if (!this._leaving) this._startRoomWatch();
+      });
+    }, 1000);
+  },
+
+  _clearWatchRestart() {
+    if (!this._restartWatchTimer) return;
+    clearTimeout(this._restartWatchTimer);
+    this._restartWatchTimer = null;
   },
 
   _applyRoomData(roomData) {
@@ -98,6 +131,9 @@ Page({
       boardLocked: viewState.boardLocked,
     });
     this._moveSubmitting = false;
+    if (!viewState.shouldShowResult) {
+      this._resultShown = false;
+    }
 
     if (roomData && this._boardComp) {
       this._boardComp.syncBoard(roomData.board, roomData.lastMove, viewState.currentPlayer);
@@ -220,6 +256,42 @@ Page({
           this._restartGame();
         }
       },
+    });
+  },
+
+  _onRestartOnline() {
+    if (!this.data.isOnline || !this.data.gameOver || this._restartSubmitting) return;
+
+    this._restartSubmitting = true;
+    this.setData({
+      syncing: true,
+      statusText: '\u6b63\u5728\u5f00\u59cb\u65b0\u5bf9\u5c40...',
+      boardLocked: true,
+    });
+
+    roomService.restartRoom(this.data.roomId)
+      .catch(err => {
+        wx.showToast({ title: err.message || '\u518d\u6765\u4e00\u5c40\u5931\u8d25', icon: 'none' });
+      })
+      .finally(() => {
+        this._loadRoom().finally(() => {
+          this._restartSubmitting = false;
+        });
+      });
+  },
+
+  _onExitOnline() {
+    if (!this.data.isOnline || !this.data.roomId) return;
+
+    this._leaving = true;
+    this._clearWatchRestart();
+    if (this._watcher) {
+      this._watcher.close();
+      this._watcher = null;
+    }
+
+    roomService.leaveRoom(this.data.roomId).finally(() => {
+      wx.reLaunch({ url: '/pages/index/index' });
     });
   },
 
