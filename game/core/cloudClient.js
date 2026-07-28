@@ -57,6 +57,10 @@ class CloudClient {
     return roomService.restartRoom(roomId);
   }
 
+  surrenderRoom(roomId) {
+    return roomService.surrenderRoom(roomId);
+  }
+
   leaveRoom(roomId) {
     return roomService.leaveRoom(roomId);
   }

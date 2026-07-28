@@ -107,6 +107,28 @@ function verifyResults() {
     boardLocked: true,
     shouldShowResult: true,
   }, 'draw result');
+
+  const surrenderedRoom = {
+    status: 'finished',
+    currentTurn: 'host',
+    winner: 'host',
+    finishReason: 'surrender',
+    surrenderedBy: 'guest',
+  };
+
+  assertState(deriveOnlineGameState(surrenderedRoom, 'host'), {
+    statusText: '\u5bf9\u624b\u6295\u964d\uff0c\u4f60\u83b7\u80dc',
+    resultText: '\u5bf9\u624b\u6295\u964d\uff0c\u4f60\u83b7\u80dc',
+    gameOver: true,
+    boardLocked: true,
+  }, 'winner sees opponent surrender');
+
+  assertState(deriveOnlineGameState(surrenderedRoom, 'guest'), {
+    statusText: '\u4f60\u5df2\u6295\u964d',
+    resultText: '\u4f60\u5df2\u6295\u964d',
+    gameOver: true,
+    boardLocked: true,
+  }, 'surrendering player sees own surrender');
 }
 
 function verifyWaitingAndMissingRoom() {

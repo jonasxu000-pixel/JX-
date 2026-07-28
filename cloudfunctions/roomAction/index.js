@@ -13,7 +13,7 @@ const BOARD_SIZE = 15;
 const EMPTY = 0;
 const BLACK = 1;
 const WHITE = 2;
-const ROOM_ACTION_VERSION = 'roomAction-20260728-rematch-consent-3';
+const ROOM_ACTION_VERSION = 'roomAction-20260728-surrender-profile-ui-4';
 const DIAGNOSTIC_ACTIONS = new Set([
   'selfTestMove',
   'selfTestMatch',
@@ -174,6 +174,8 @@ async function joinRoomForOpenId(targetRoomId, openId) {
         }),
         status: 'playing',
         restartReady: _.set(createRestartReady()),
+        finishReason: null,
+        surrenderedBy: null,
         updatedAt: db.serverDate(),
       },
     });
@@ -248,6 +250,8 @@ async function placePieceForOpenId(targetRoomId, targetRow, targetCol, openId) {
         currentTurn: nextTurn,
         winner,
         status: nextStatus,
+        finishReason: hasWinner ? 'five' : (hasDraw ? 'draw' : null),
+        surrenderedBy: null,
         restartReady: _.set(createRestartReady()),
         updatedAt: db.serverDate(),
       },
@@ -260,6 +264,56 @@ async function placePieceForOpenId(targetRoomId, targetRow, targetCol, openId) {
       currentTurn: nextTurn,
       winner,
       status: nextStatus,
+    };
+  });
+}
+
+async function surrenderRoomForOpenId(targetRoomId, openId) {
+  if (!targetRoomId) {
+    return { success: false, error: '房间号不能为空' };
+  }
+
+  return runTransactionWithRetry(async transaction => {
+    const roomDoc = transaction.collection('rooms').doc(targetRoomId);
+    const roomRes = await roomDoc.get();
+    const room = roomRes.data;
+
+    if (!room) {
+      return { success: false, error: '房间不存在' };
+    }
+
+    if (room.status !== 'playing') {
+      return { success: false, error: '当前对局不可投降' };
+    }
+
+    const role = getPlayerRole(room, openId);
+    if (!role) {
+      return { success: false, error: '你不在当前房间中' };
+    }
+
+    if (!room.host || !room.guest) {
+      return { success: false, error: '对手已离开，当前对局已结束' };
+    }
+
+    const winner = nextRole(role);
+    await roomDoc.update({
+      data: {
+        currentTurn: winner,
+        winner,
+        status: 'finished',
+        finishReason: 'surrender',
+        surrenderedBy: role,
+        restartReady: _.set(createRestartReady()),
+        updatedAt: db.serverDate(),
+      },
+    });
+
+    return {
+      success: true,
+      winner,
+      status: 'finished',
+      finishReason: 'surrender',
+      surrenderedBy: role,
     };
   });
 }
@@ -321,6 +375,8 @@ async function restartRoomForOpenId(targetRoomId, openId) {
         currentTurn: 'host',
         winner: null,
         status: 'playing',
+        finishReason: null,
+        surrenderedBy: null,
         restartReady: _.set(createRestartReady()),
         updatedAt: db.serverDate(),
       },
@@ -365,6 +421,8 @@ async function leaveRoomForOpenId(targetRoomId, openId) {
         board: _.set(createBoard()),
         lastMove: null,
         winner: null,
+        finishReason: null,
+        surrenderedBy: null,
         restartReady: _.set(createRestartReady()),
         updatedAt: db.serverDate(),
       },
@@ -410,6 +468,8 @@ exports.main = async (event = {}) => {
             lastMove: null,
             winner: null,
             status: 'waiting',
+            finishReason: null,
+            surrenderedBy: null,
             restartReady: createRestartReady(),
             createdAt: db.serverDate(),
             updatedAt: db.serverDate(),
@@ -786,6 +846,9 @@ exports.main = async (event = {}) => {
 
       case 'restartRoom':
         return restartRoomForOpenId(roomId, callerOpenId);
+
+      case 'surrenderRoom':
+        return surrenderRoomForOpenId(roomId, callerOpenId);
 
       case 'updateRoom':
         return {

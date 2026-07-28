@@ -77,6 +77,12 @@ function createWxMock() {
       storage[key] = value;
     },
     showToast() {},
+    showModal(options) {
+      this.lastModal = options;
+    },
+    chooseMedia(options) {
+      options.success({ tempFiles: [{ tempFilePath: 'wxfile://tmp/avatar.jpg' }] });
+    },
     chooseImage(options) {
       options.success({ tempFilePaths: ['wxfile://tmp/avatar.jpg'] });
     },
@@ -169,6 +175,61 @@ async function verifyWeChatLogin() {
 
   runtime.manager.go('home');
   assert(runtime.manager.current.player.nickname === '自定义棋手', 'custom profile must persist on the home scene');
+}
+
+async function verifyIncompleteProfileIsNotMarkedComplete() {
+  const { wx, runtime } = createStartedRuntime();
+  const homeScene = runtime.manager.current;
+  wx.lastUserInfoButton.trigger({ errMsg: 'getUserInfo:fail auth deny' });
+  await flush();
+  await flush();
+
+  const stored = wx.getStorageSync('gomoku_player_session_v1');
+  assert(stored && stored.openId === 'test-wechat-openid', 'identity login must still persist OpenID after profile denial');
+  assert(!stored.profileCompleted, 'denied profile access must not be marked as a completed profile');
+  assert(!stored.wechatNickname, 'default nickname must not be misreported as a WeChat nickname');
+  assert(runtime.manager.current.constructor.name === 'ProfileScene', 'incomplete profile must open the player setup scene');
+  assert(homeScene.userInfoButton === null, 'home native login button must be cleaned before changing scenes');
+}
+
+async function verifySurrenderConfirmation() {
+  let surrenderCalls = 0;
+  let modalOptions;
+  const runtime = {
+    wx: {
+      showModal(options) {
+        modalOptions = options;
+      },
+    },
+    cloud: {
+      surrenderRoom() {
+        surrenderCalls += 1;
+        return Promise.resolve({ success: true });
+      },
+    },
+    manager: {
+      render() {},
+      go() {},
+    },
+  };
+  const scene = new OnlineGameScene(runtime, {
+    roomId: '123456',
+    role: 'host',
+    color: 'black',
+  });
+  scene.active = false;
+
+  scene.confirmSurrender();
+  assert(modalOptions && modalOptions.title.includes('投降'), 'surrender must show an explicit confirmation modal');
+  modalOptions.success({ confirm: false, cancel: true });
+  await flush();
+  assert(surrenderCalls === 0, 'canceling surrender must keep the match running');
+
+  scene.confirmSurrender();
+  modalOptions.success({ confirm: true, cancel: false });
+  await flush();
+  assert(surrenderCalls === 1, 'confirming surrender must call the cloud action once');
+  assert(scene.boardLocked, 'surrender submission must lock the board');
 }
 
 function verifyRematchAndDepartureViewState() {
@@ -478,6 +539,8 @@ async function verifyCopyFailureFeedback() {
 async function main() {
   verifyRuntimeBoot();
   await verifyWeChatLogin();
+  await verifyIncompleteProfileIsNotMarkedComplete();
+  await verifySurrenderConfirmation();
   verifyLocalBoardTap();
   verifyJoinKeypad();
   await verifyJoinClipboardPaste();

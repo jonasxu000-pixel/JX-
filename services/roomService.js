@@ -77,6 +77,13 @@ function restartRoom(roomId) {
   }).then(res => assertCloudResult(res, '再来一局失败'));
 }
 
+function surrenderRoom(roomId) {
+  return wx.cloud.callFunction({
+    name: 'roomAction',
+    data: { action: 'surrenderRoom', roomId },
+  }).then(res => assertCloudResult(res, '投降失败'));
+}
+
 function leaveRoom(roomId) {
   return wx.cloud.callFunction({
     name: 'roomAction',
@@ -99,6 +106,7 @@ module.exports = {
   getRoom,
   placePiece,
   restartRoom,
+  surrenderRoom,
   leaveRoom,
   getOpenId,
 };

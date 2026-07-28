@@ -1,8 +1,12 @@
 const { drawButton } = require('../renderers/buttonRenderer');
-const { drawTitle, drawSubtitle } = require('../renderers/textRenderer');
+const { drawTitle, drawSubtitle, drawLabel } = require('../renderers/textRenderer');
 const { drawCard, drawPill } = require('../renderers/cardRenderer');
 const { COLORS } = require('../design/theme');
-const { getStoredPlayer, savePlayer } = require('../../utils/playerSession');
+const {
+  getStoredPlayer,
+  normalizeWechatUserInfo,
+  savePlayer,
+} = require('../../utils/playerSession');
 const { showToast } = require('../../utils/clipboard');
 const { drawAvatar } = require('../renderers/avatarRenderer');
 
@@ -15,6 +19,12 @@ class HomeScene {
   }
 
   onEnter() {
+    this.player = getStoredPlayer(this.runtime.wx);
+    this.createWeChatLoginButton();
+  }
+
+  onResume() {
+    this.player = getStoredPlayer(this.runtime.wx);
     this.createWeChatLoginButton();
   }
 
@@ -28,9 +38,15 @@ class HomeScene {
     this.runtime.manager.render();
     this.runtime.cloud.login()
       .then(openId => {
-        this.player = savePlayer(this.runtime.wx, openId, userInfo);
+        const profile = normalizeWechatUserInfo(userInfo);
+        this.player = savePlayer(this.runtime.wx, openId, userInfo, this.player);
         this.destroyWeChatLoginButton();
-        showToast(this.runtime.wx, '微信账号登录成功', 'success');
+        if (profile.usable) {
+          showToast(this.runtime.wx, '微信账号登录成功', 'success');
+        } else {
+          showToast(this.runtime.wx, '身份已连接，请完善头像昵称');
+          this.runtime.manager.go('profile');
+        }
       })
       .catch(err => {
         showToast(this.runtime.wx, err.message || '微信登录失败，请重试');
@@ -43,7 +59,7 @@ class HomeScene {
 
   createWeChatLoginButton() {
     const wxApi = this.runtime.wx;
-    if (!this.needsWeChatProfile()
+    if (this.player
       || this.userInfoButton
       || !wxApi
       || typeof wxApi.createUserInfoButton !== 'function') return;
@@ -54,25 +70,20 @@ class HomeScene {
       withCredentials: false,
       lang: 'zh_CN',
       style: {
-        left: width / 2 + 8,
-        top: 191,
-        width: 100,
-        height: 38,
-        lineHeight: 38,
-        backgroundColor: COLORS.blueSoft,
-        color: COLORS.blue,
+        left: 28,
+        top: 38,
+        width: width - 56,
+        height: 54,
+        lineHeight: 54,
+        backgroundColor: COLORS.jade,
+        color: COLORS.white,
         textAlign: 'center',
-        fontSize: 12,
-        borderRadius: 16,
+        fontSize: 15,
+        borderRadius: 18,
       },
     });
     this.userInfoButton.onTap(result => {
-      if (!result || !result.userInfo) {
-        this.loginWithWeChat({});
-        showToast(wxApi, '已使用默认玩家资料');
-        return;
-      }
-      this.loginWithWeChat(result.userInfo);
+      this.loginWithWeChat((result && result.userInfo) || {});
     });
   }
 
@@ -82,39 +93,38 @@ class HomeScene {
   }
 
   render(ctx, input) {
-    const { width, height, manager } = this.runtime;
-    const buttonWidth = Math.min(width - 56, 300);
+    const { width, manager } = this.runtime;
+    const buttonWidth = Math.min(width - 48, 340);
     const x = (width - buttonWidth) / 2;
-    const startY = Math.max(300, height * 0.43);
+    const startY = 332;
+
+    this.drawPlayerBar(ctx, input);
 
     drawCard(ctx, {
       x: 20,
-      y: 34,
+      y: 116,
       width: width - 40,
-      height: 226,
+      height: 190,
       fill: COLORS.surface,
     });
-    drawBrandStones(ctx, width / 2, 84);
-    drawTitle(ctx, '你棋没我硬', width / 2, 132);
-    drawSubtitle(ctx, '好友联机五子棋 · 落子见真章', width / 2, 166);
+    drawBrandStones(ctx, width / 2, 150);
+    drawTitle(ctx, '你棋没我硬', width / 2, 194);
+    drawSubtitle(ctx, '好友联机五子棋 · 落子见真章', width / 2, 226);
     drawPill(ctx, {
-      x: width / 2 - 108,
-      y: 191,
-      width: 100,
-      height: 38,
-      text: '好友实时联机',
+      x: width / 2 - 72,
+      y: 254,
+      width: 144,
+      height: 34,
+      text: '15 路棋盘 · 黑棋先行',
     });
-    if (this.player && !this.needsWeChatProfile()) {
-      this.drawPlayerBadge(ctx, input);
-    } else if (!this.userInfoButton) {
+
+    if (!this.player && !this.userInfoButton) {
       drawButton(ctx, input, {
-        x: width / 2 + 8,
-        y: 191,
-        width: 100,
-        height: 38,
+        x: 28,
+        y: 38,
+        width: width - 56,
+        height: 54,
         text: this.loginLoading ? '登录中…' : '微信快捷登录',
-        variant: 'secondary',
-        fontSize: 12,
         disabled: this.loginLoading,
         onTap: () => this.loginWithWeChat(),
       });
@@ -124,61 +134,69 @@ class HomeScene {
       x,
       y: startY,
       width: buttonWidth,
-      height: 52,
-      text: '本机双人对战',
-      variant: 'gold',
-      onTap: () => manager.go('localGame'),
-    });
-
-    drawButton(ctx, input, {
-      x,
-      y: startY + 72,
-      width: buttonWidth,
-      height: 52,
+      height: 58,
       text: '创建好友房',
       onTap: () => manager.go('createRoom'),
     });
 
     drawButton(ctx, input, {
       x,
-      y: startY + 144,
+      y: startY + 74,
       width: buttonWidth,
-      height: 52,
+      height: 56,
       text: '加入好友房',
       variant: 'secondary',
       onTap: () => manager.go('joinRoom'),
     });
 
-    drawSubtitle(ctx, '创建房间 · 邀请好友 · 随时开局', width / 2, startY + 220);
-  }
-
-  needsWeChatProfile() {
-    return !this.player || !this.player.wechatNickname;
-  }
-
-  drawPlayerBadge(ctx, input) {
-    const { width, manager } = this.runtime;
-    const x = width / 2 + 8;
-    drawCard(ctx, {
+    drawButton(ctx, input, {
       x,
-      y: 191,
-      width: 100,
-      height: 38,
-      radius: 16,
-      shadow: false,
-      fill: COLORS.blueSoft,
-      stroke: '#C8DAE7',
+      y: startY + 146,
+      width: buttonWidth,
+      height: 50,
+      text: '同屏双人对战',
+      variant: 'gold',
+      onTap: () => manager.go('localGame'),
     });
-    drawAvatar(ctx, this.runtime.wx, this.player, x + 5, 195, 30, () => manager.render());
-    const nickname = this.player.nickname.length > 5
-      ? `${this.player.nickname.slice(0, 5)}…`
-      : this.player.nickname;
-    ctx.fillStyle = COLORS.blue;
-    ctx.font = 'bold 11px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(nickname, x + 67, 210);
-    input.addHitArea({ x, y: 191, width: 100, height: 38 }, () => manager.go('profile'));
+
+    drawSubtitle(ctx, '创建房间 · 一键邀请 · 好友实时对战', width / 2, startY + 222);
+    drawHomeDecoration(ctx, width, this.runtime.height);
+  }
+
+  drawPlayerBar(ctx, input) {
+    const { width, manager } = this.runtime;
+    drawCard(ctx, {
+      x: 20,
+      y: 28,
+      width: width - 40,
+      height: 72,
+      radius: 20,
+      fill: this.player ? COLORS.surface : COLORS.jadeSoft,
+    });
+    if (!this.player) {
+      return;
+    }
+
+    drawAvatar(ctx, this.runtime.wx, this.player, 32, 38, 52, () => manager.render());
+    drawLabel(ctx, this.player.nickname, 96, 54, 'left', { bold: true, size: 16 });
+    drawLabel(
+      ctx,
+      this.player.profileCompleted ? '微信身份已连接 · 点击编辑资料' : '微信身份已连接 · 请完善头像昵称',
+      96,
+      78,
+      'left',
+      { size: 11, color: this.player.profileCompleted ? COLORS.inkMuted : COLORS.danger },
+    );
+    drawPill(ctx, {
+      x: width - 78,
+      y: 47,
+      width: 46,
+      height: 32,
+      text: '资料',
+      fill: COLORS.blueSoft,
+      color: COLORS.blue,
+    });
+    input.addHitArea({ x: 20, y: 28, width: width - 40, height: 72 }, () => manager.go('profile'));
   }
 }
 
@@ -197,6 +215,27 @@ function drawBrandStones(ctx, centerX, centerY) {
     ctx.lineWidth = 1;
     ctx.stroke();
   });
+}
+
+function drawHomeDecoration(ctx, width, height) {
+  if (height < 760) return;
+  const originX = width - 118;
+  const originY = height - 118;
+  ctx.save();
+  ctx.globalAlpha = 0.09;
+  ctx.strokeStyle = COLORS.jade;
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 6; i += 1) {
+    ctx.beginPath();
+    ctx.moveTo(originX, originY + i * 20);
+    ctx.lineTo(originX + 100, originY + i * 20);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(originX + i * 20, originY);
+    ctx.lineTo(originX + i * 20, originY + 100);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 module.exports = HomeScene;

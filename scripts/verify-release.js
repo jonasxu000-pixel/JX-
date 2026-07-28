@@ -47,12 +47,15 @@ function verifySourceGuards() {
   assert(runtimeSource.includes("manager.register('home'"), 'runtime must register the authenticated home scene');
   assert(playerSessionSource.includes('gomoku_player_session_v1'), 'WeChat login must persist a local player session');
   assert(profileSource.includes('createUserInfoButton'), 'profile must use the official user-authorized WeChat info button');
-  assert(profileSource.includes('chooseImage'), 'profile must support selecting an avatar from the phone album');
+  assert(profileSource.includes('chooseMedia'), 'profile must use the maintained media picker for album avatars');
+  assert(profileSource.includes('chooseImage'), 'profile must retain a legacy album-picker fallback');
   assert(profileSource.includes('saveFile'), 'custom album avatar must be persisted in the Mini Game file sandbox');
   assert(cloudSource.includes('bothReady'), 'rematch must require both players to confirm');
   assert(cloudSource.includes('restartReady'), 'room state must persist rematch consent');
   assert(onlineSource.includes('placePiece'), 'online scene must use the cloud move action');
   assert(onlineSource.includes('restartRoom'), 'online scene must support another round');
+  assert(onlineSource.includes('confirmSurrender'), 'online scene must confirm surrender before ending a round');
+  assert(cloudSource.includes('surrenderRoomForOpenId'), 'surrender must be adjudicated by the cloud action');
   assert(cloudSource.includes('ENABLE_ROOM_DIAGNOSTICS'), 'cloud diagnostics must be release-gated');
   assert(cloudSource.includes('isBoardFull(nextBoard)'), 'cloud action must finish full-board draws');
   assert(permissionDoc.includes('"write": false'), 'database permission guide must disable client writes');

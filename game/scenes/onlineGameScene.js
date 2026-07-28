@@ -24,6 +24,7 @@ class OnlineGameScene {
     this.syncing = false;
     this.moveSubmitting = false;
     this.restartSubmitting = false;
+    this.surrenderSubmitting = false;
     this.restartReady = false;
     this.opponentRestartReady = false;
     this.watcher = null;
@@ -104,6 +105,8 @@ class OnlineGameScene {
     this.restartReady = Boolean(restartReady[this.role]);
     const opponentRole = this.role === 'host' ? 'guest' : 'host';
     this.opponentRestartReady = Boolean(restartReady[opponentRole]);
+    this.finishReason = roomData && roomData.finishReason;
+    this.surrenderedBy = roomData && roomData.surrenderedBy;
 
     if (roomData && Array.isArray(roomData.board)) {
       this.board = normalizeBoard(roomData.board);
@@ -151,6 +154,19 @@ class OnlineGameScene {
       bold: this.isMyTurn,
       color: this.isMyTurn ? COLORS.jade : COLORS.ink,
     });
+    if (!this.gameOver) {
+      drawButton(ctx, input, {
+        x: width - 66,
+        y: 70,
+        width: 46,
+        height: 38,
+        text: '⚑',
+        variant: 'danger',
+        fontSize: 18,
+        disabled: this.surrenderSubmitting,
+        onTap: () => this.confirmSurrender(),
+      });
+    }
     boardRenderer.drawBoard(ctx, this.board, this.lastMove, this.boardRect);
 
     if (this.shouldShowResult) {
@@ -215,6 +231,24 @@ class OnlineGameScene {
   }
 
   getResultPresentation() {
+    if (this.resultText === '对手投降，你获胜') {
+      return {
+        title: '对手认输，本局你获胜',
+        subtitle: this.getRestartSubtitle('胜负已定，邀请对手再战一局'),
+        color: COLORS.jade,
+        fill: '#EFF7F2',
+        stroke: '#CDE3D5',
+      };
+    }
+    if (this.resultText === '你已投降') {
+      return {
+        title: '你已投降，本局结束',
+        subtitle: this.getRestartSubtitle('调整思路，下一局重新来过'),
+        color: COLORS.danger,
+        fill: '#FBF1EE',
+        stroke: '#EBCFC7',
+      };
+    }
     if (this.resultText === '你获胜') {
       return {
         title: '漂亮！你赢下了这一局',
@@ -287,6 +321,42 @@ class OnlineGameScene {
       })
       .finally(() => {
         this.restartSubmitting = false;
+        if (this.active) this.loadRoom();
+      });
+  }
+
+  confirmSurrender() {
+    if (this.gameOver || this.surrenderSubmitting) return;
+    const wxApi = this.runtime.wx;
+    if (!wxApi || typeof wxApi.showModal !== 'function') {
+      this.submitSurrender();
+      return;
+    }
+    wxApi.showModal({
+      title: '确认投降？',
+      content: '投降后本局立即结束，对手将获得胜利。',
+      confirmText: '确认投降',
+      confirmColor: COLORS.danger,
+      cancelText: '继续对局',
+      success: result => {
+        if (result && result.confirm) this.submitSurrender();
+      },
+    });
+  }
+
+  submitSurrender() {
+    if (this.gameOver || this.surrenderSubmitting) return;
+    this.surrenderSubmitting = true;
+    this.syncing = true;
+    this.boardLocked = true;
+    this.statusText = '正在确认投降…';
+    this.runtime.manager.render();
+    this.runtime.cloud.surrenderRoom(this.roomId)
+      .catch(err => {
+        this.statusText = err.message || '投降失败，请重试';
+      })
+      .finally(() => {
+        this.surrenderSubmitting = false;
         if (this.active) this.loadRoom();
       });
   }

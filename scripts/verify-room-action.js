@@ -285,6 +285,51 @@ async function verifyLeaveLocksOpponent(roomAction) {
   assert(!rooms.has(hostLeaveRoomId), 'host leave must close the room');
 }
 
+async function verifySurrender(roomAction) {
+  const guestSurrenderRoomId = await createPlayingRoom(roomAction);
+  const surrendered = await call(roomAction, 'guest-openid', {
+    action: 'surrenderRoom',
+    roomId: guestSurrenderRoomId,
+  });
+  const finishedRoom = rooms.get(guestSurrenderRoomId);
+
+  assert(surrendered.status === 'finished', 'surrender must finish the current round');
+  assert(surrendered.winner === 'host', 'guest surrender must award the host victory');
+  assert(finishedRoom.finishReason === 'surrender', 'room must record the surrender finish reason');
+  assert(finishedRoom.surrenderedBy === 'guest', 'room must record the surrendering role');
+  assert(!finishedRoom.restartReady.host && !finishedRoom.restartReady.guest, 'surrender must clear rematch readiness');
+  await expectFail(roomAction, 'guest-openid', {
+    action: 'placePiece',
+    roomId: guestSurrenderRoomId,
+    row: 7,
+    col: 7,
+  }, 'move after surrender');
+  await expectFail(roomAction, 'guest-openid', {
+    action: 'surrenderRoom',
+    roomId: guestSurrenderRoomId,
+  }, 'repeat surrender');
+
+  await call(roomAction, 'host-openid', { action: 'restartRoom', roomId: guestSurrenderRoomId });
+  await call(roomAction, 'guest-openid', { action: 'restartRoom', roomId: guestSurrenderRoomId });
+  const restartedRoom = rooms.get(guestSurrenderRoomId);
+  assert(restartedRoom.status === 'playing', 'both players may rematch after surrender');
+  assert(restartedRoom.finishReason === null, 'rematch must clear surrender finish reason');
+  assert(restartedRoom.surrenderedBy === null, 'rematch must clear surrendering role');
+
+  const hostSurrenderRoomId = await createPlayingRoom(roomAction);
+  const hostSurrendered = await call(roomAction, 'host-openid', {
+    action: 'surrenderRoom',
+    roomId: hostSurrenderRoomId,
+  });
+  assert(hostSurrendered.winner === 'guest', 'host surrender must award the guest victory');
+
+  const outsiderRoomId = await createPlayingRoom(roomAction);
+  await expectFail(roomAction, 'outsider-openid', {
+    action: 'surrenderRoom',
+    roomId: outsiderRoomId,
+  }, 'outsider surrender');
+}
+
 async function verifyConcurrentRestartConsent(roomAction) {
   const roomId = await createPlayingRoom(roomAction);
   const finishedRoom = rooms.get(roomId);
@@ -434,7 +479,7 @@ async function verifyDiagnosticsDisabledByDefault(roomAction) {
 async function verifyHealthPing(roomAction) {
   delete process.env.ENABLE_ROOM_DIAGNOSTICS;
   const result = await call(roomAction, 'host-openid', { action: 'ping' });
-  assert(result.version === 'roomAction-20260728-rematch-consent-3', 'health ping should expose deployed version');
+  assert(result.version === 'roomAction-20260728-surrender-profile-ui-4', 'health ping should expose deployed version');
 }
 
 async function main() {
@@ -447,6 +492,7 @@ async function main() {
   await verifyRestartRoom(roomAction);
   await verifyConcurrentRestartConsent(roomAction);
   await verifyLeaveLocksOpponent(roomAction);
+  await verifySurrender(roomAction);
   await verifyConcurrentMoveIsAtomic(roomAction);
   await verifyTransactionConflictRetries(roomAction);
   await verifyConcurrentJoinIsAtomic(roomAction);

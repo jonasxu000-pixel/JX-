@@ -34,9 +34,14 @@ function deriveOnlineGameState(roomData, myRole) {
     && !roomData.winner;
 
   if (isFinished) {
-    const resultText = roomData.winner
+    let resultText = roomData.winner
       ? getWinnerText(roomData.winner, myRole)
       : '\u548c\u68cb';
+    if (roomData.finishReason === 'surrender') {
+      resultText = roomData.surrenderedBy === myRole
+        ? '\u4f60\u5df2\u6295\u964d'
+        : '\u5bf9\u624b\u6295\u964d\uff0c\u4f60\u83b7\u80dc';
+    }
     return {
       currentPlayer,
       statusText: resultText,
