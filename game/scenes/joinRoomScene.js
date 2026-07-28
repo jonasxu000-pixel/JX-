@@ -1,5 +1,6 @@
 const { drawButton } = require('../renderers/buttonRenderer');
 const { drawTitle, drawSubtitle, drawLabel } = require('../renderers/textRenderer');
+const { extractRoomId, readClipboardText, showToast } = require('../../utils/clipboard');
 
 class JoinRoomScene {
   constructor(runtime) {
@@ -7,6 +8,8 @@ class JoinRoomScene {
     this.roomId = '';
     this.loading = false;
     this.error = '';
+    this.feedback = '';
+    this.pasting = false;
     this.active = true;
   }
 
@@ -23,26 +26,31 @@ class JoinRoomScene {
     const buttonWidth = Math.min(width - 64, 280);
     const x = (width - buttonWidth) / 2;
 
-    drawTitle(ctx, '加入房间', width / 2, 70);
-    drawSubtitle(ctx, '输入 6 位房间号', width / 2, 106);
+    drawTitle(ctx, '加入房间', width / 2, 62);
+    drawSubtitle(ctx, '粘贴或输入 6 位房间号', width / 2, 98);
 
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(40, 132, width - 80, 74);
-    ctx.fillStyle = '#22342d';
-    ctx.font = 'bold 34px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(this.roomId.padEnd(6, '·'), width / 2, 169);
+    this.renderRoomIdSlots(ctx);
+
+    drawButton(ctx, input, {
+      x,
+      y: 196,
+      width: buttonWidth,
+      height: 44,
+      text: this.pasting ? '正在读取剪贴板...' : '一键粘贴房间号',
+      disabled: this.pasting || this.loading,
+      fill: '#295f92',
+      onTap: () => this.pasteRoomId(),
+    });
 
     this.renderKeypad(ctx, input);
 
-    if (this.error) {
-      drawLabel(ctx, this.error, width / 2, 430, 'center');
+    if (this.error || this.feedback) {
+      drawLabel(ctx, this.error || this.feedback, width / 2, 470, 'center');
     }
 
     drawButton(ctx, input, {
       x,
-      y: 458,
+      y: 494,
       width: buttonWidth,
       height: 50,
       text: this.loading ? '加入中...' : '加入房间',
@@ -52,7 +60,7 @@ class JoinRoomScene {
 
     drawButton(ctx, input, {
       x,
-      y: 522,
+      y: 558,
       width: buttonWidth,
       height: 50,
       text: '返回首页',
@@ -61,13 +69,37 @@ class JoinRoomScene {
     });
   }
 
+  renderRoomIdSlots(ctx) {
+    const { width } = this.runtime;
+    const gap = 8;
+    const slotWidth = Math.min(48, (width - 48 - gap * 5) / 6);
+    const slotHeight = 56;
+    const startX = (width - slotWidth * 6 - gap * 5) / 2;
+    const y = 122;
+
+    for (let index = 0; index < 6; index += 1) {
+      const digit = this.roomId[index] || '';
+      const x = startX + index * (slotWidth + gap);
+      ctx.fillStyle = digit ? '#edf4fa' : '#ffffff';
+      ctx.fillRect(x, y, slotWidth, slotHeight);
+      ctx.strokeStyle = digit ? '#295f92' : '#c7d1cc';
+      ctx.lineWidth = digit ? 2 : 1;
+      ctx.strokeRect(x, y, slotWidth, slotHeight);
+      ctx.fillStyle = digit ? '#22342d' : '#c1cbc6';
+      ctx.font = digit ? 'bold 28px sans-serif' : '20px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(digit || '—', x + slotWidth / 2, y + slotHeight / 2);
+    }
+  }
+
   renderKeypad(ctx, input) {
     const { width } = this.runtime;
     const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '退格', '0', '清空'];
     const keyWidth = Math.min(86, (width - 72) / 3);
     const gap = 12;
     const startX = (width - keyWidth * 3 - gap * 2) / 2;
-    const startY = 232;
+    const startY = 264;
 
     keys.forEach((key, index) => {
       const col = index % 3;
@@ -86,6 +118,7 @@ class JoinRoomScene {
 
   handleKey(key) {
     this.error = '';
+    this.feedback = '';
     if (/^[0-9]$/.test(key) && this.roomId.length < 6) {
       this.roomId += key;
     } else if (key === '退格') {
@@ -94,6 +127,36 @@ class JoinRoomScene {
       this.roomId = '';
     }
     this.runtime.manager.render();
+  }
+
+  pasteRoomId() {
+    if (this.pasting || this.loading) return;
+    this.pasting = true;
+    this.error = '';
+    this.feedback = '正在读取剪贴板...';
+    this.runtime.manager.render();
+
+    readClipboardText(this.runtime.wx)
+      .then(text => {
+        if (!this.active) return;
+        const roomId = extractRoomId(text);
+        if (!roomId) {
+          throw new Error('剪贴板中没有有效的 6 位房间号');
+        }
+        this.roomId = roomId;
+        this.feedback = `已粘贴房间号 ${roomId}`;
+        showToast(this.runtime.wx, '房间号已粘贴', 'success');
+      })
+      .catch(err => {
+        if (!this.active) return;
+        this.error = err.message || '读取剪贴板失败';
+        this.feedback = '';
+        showToast(this.runtime.wx, '房间号无效');
+      })
+      .finally(() => {
+        this.pasting = false;
+        if (this.active) this.runtime.manager.render();
+      });
   }
 
   joinRoom() {

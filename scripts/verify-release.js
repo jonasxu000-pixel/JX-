@@ -23,6 +23,7 @@ function verifyJson(file) {
 function verifySourceGuards() {
   const gameEntry = read('game.js');
   const runtimeSource = read('game/runtime.js');
+  const joinSource = read('game/scenes/joinRoomScene.js');
   const onlineSource = read('game/scenes/onlineGameScene.js');
   const cloudSource = read('cloudfunctions/roomAction/index.js');
   const permissionDoc = read('docs/DATABASE_PERMISSIONS.md');
@@ -33,6 +34,9 @@ function verifySourceGuards() {
   assert(gameEntry.includes("require('./game/runtime')"), 'game.js must boot the Canvas runtime');
   assert(runtimeSource.includes('wxApi.createCanvas()'), 'runtime must create a Mini Game Canvas');
   assert(runtimeSource.includes('wxApi.onTouchStart'), 'runtime must register touch input');
+  assert(joinSource.includes('pasteRoomId'), 'join scene must support pasting a room id');
+  assert(joinSource.includes("digit || '—'"), 'join scene must render visibly empty room-id slots');
+  assert(!joinSource.includes("padEnd(6, '·')"), 'join scene must not use misleading password dots');
   assert(onlineSource.includes('placePiece'), 'online scene must use the cloud move action');
   assert(onlineSource.includes('restartRoom'), 'online scene must support another round');
   assert(cloudSource.includes('ENABLE_ROOM_DIAGNOSTICS'), 'cloud diagnostics must be release-gated');

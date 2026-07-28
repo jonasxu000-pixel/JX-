@@ -20,6 +20,7 @@ function createContextMock() {
     scale: noop,
     clearRect: noop,
     fillRect: noop,
+    strokeRect: noop,
     beginPath: noop,
     moveTo: noop,
     lineTo: noop,
@@ -109,6 +110,48 @@ function verifyJoinKeypad() {
   const scene = runtime.manager.current;
   ['1', '2', '3', '退格', '4', '5', '6', '7'].forEach(key => scene.handleKey(key));
   assert(scene.roomId === '124567', 'join keypad must support digits and backspace');
+}
+
+async function verifyJoinClipboardPaste() {
+  const { wx, runtime } = createStartedRuntime();
+  const toasts = [];
+  wx.getClipboardData = options => {
+    options.success({ data: '好友发来的房间号：654321' });
+  };
+  wx.showToast = options => {
+    toasts.push(options);
+  };
+
+  runtime.manager.go('joinRoom');
+  const scene = runtime.manager.current;
+  scene.pasteRoomId();
+  await flush();
+
+  assert(scene.roomId === '654321', 'join scene must extract a six-digit room id from clipboard text');
+  assert(scene.feedback.includes('已粘贴'), 'join scene must show paste success feedback');
+  assert(toasts.some(toast => toast.title === '房间号已粘贴'), 'join scene must show a paste success toast');
+  assert(!scene.pasting, 'paste button must unlock after success');
+}
+
+async function verifyInvalidClipboardFeedback() {
+  const { wx, runtime } = createStartedRuntime();
+  const toasts = [];
+  wx.getClipboardData = options => {
+    options.success({ data: '这里没有房间号 1234567' });
+  };
+  wx.showToast = options => {
+    toasts.push(options);
+  };
+
+  runtime.manager.go('joinRoom');
+  const scene = runtime.manager.current;
+  scene.pasteRoomId();
+  await flush();
+
+  assert(scene.roomId === '', 'invalid clipboard text must not fill the room id');
+  assert(scene.error.includes('没有有效的 6 位房间号'), 'invalid clipboard text must show a clear error');
+  assert(toasts.some(toast => toast.title === '房间号无效'), 'invalid clipboard text must show an error toast');
+  assert(!scene.pasting, 'paste button must unlock after invalid clipboard text');
 }
 
 async function verifyStaleJoinCannotChangeScene() {
@@ -217,6 +260,8 @@ async function main() {
   verifyRuntimeBoot();
   verifyLocalBoardTap();
   verifyJoinKeypad();
+  await verifyJoinClipboardPaste();
+  await verifyInvalidClipboardFeedback();
   await verifyStaleJoinCannotChangeScene();
   verifyHostReturnsToWaitingWhenGuestLeaves();
   await verifyCopyFeedback(CreateRoomScene, {}, 'create room scene');
