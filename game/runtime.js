@@ -6,6 +6,7 @@ const CreateRoomScene = require('./scenes/createRoomScene');
 const JoinRoomScene = require('./scenes/joinRoomScene');
 const WaitRoomScene = require('./scenes/waitRoomScene');
 const OnlineGameScene = require('./scenes/onlineGameScene');
+const ProfileScene = require('./scenes/profileScene');
 const { getSharedRoomId } = require('../utils/share');
 
 const CLOUD_ENV = 'cloud1-d3glf789q33b91507';
@@ -43,6 +44,7 @@ function createRuntime(wxApi) {
   manager.register('joinRoom', JoinRoomScene);
   manager.register('waitRoom', WaitRoomScene);
   manager.register('onlineGame', OnlineGameScene);
+  manager.register('profile', ProfileScene);
 
   function start() {
     if (wxApi.cloud && wxApi.cloud.init) {

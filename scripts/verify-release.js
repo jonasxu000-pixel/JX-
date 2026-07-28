@@ -25,6 +25,8 @@ function verifySourceGuards() {
   const runtimeSource = read('game/runtime.js');
   const joinSource = read('game/scenes/joinRoomScene.js');
   const shareSource = read('utils/share.js');
+  const playerSessionSource = read('utils/playerSession.js');
+  const profileSource = read('game/scenes/profileScene.js');
   const onlineSource = read('game/scenes/onlineGameScene.js');
   const cloudSource = read('cloudfunctions/roomAction/index.js');
   const permissionDoc = read('docs/DATABASE_PERMISSIONS.md');
@@ -42,6 +44,13 @@ function verifySourceGuards() {
   assert(runtimeSource.includes('getSharedRoomId'), 'runtime must accept room ids from share entry parameters');
   assert(shareSource.includes('wxApi.shareAppMessage'), 'room sharing must use the Mini Game share API');
   assert(shareSource.includes('query: `roomId='), 'room sharing must include a deep-link room id');
+  assert(runtimeSource.includes("manager.register('home'"), 'runtime must register the authenticated home scene');
+  assert(playerSessionSource.includes('gomoku_player_session_v1'), 'WeChat login must persist a local player session');
+  assert(profileSource.includes('createUserInfoButton'), 'profile must use the official user-authorized WeChat info button');
+  assert(profileSource.includes('chooseImage'), 'profile must support selecting an avatar from the phone album');
+  assert(profileSource.includes('saveFile'), 'custom album avatar must be persisted in the Mini Game file sandbox');
+  assert(cloudSource.includes('bothReady'), 'rematch must require both players to confirm');
+  assert(cloudSource.includes('restartReady'), 'room state must persist rematch consent');
   assert(onlineSource.includes('placePiece'), 'online scene must use the cloud move action');
   assert(onlineSource.includes('restartRoom'), 'online scene must support another round');
   assert(cloudSource.includes('ENABLE_ROOM_DIAGNOSTICS'), 'cloud diagnostics must be release-gated');

@@ -13,7 +13,7 @@ const BOARD_SIZE = 15;
 const EMPTY = 0;
 const BLACK = 1;
 const WHITE = 2;
-const ROOM_ACTION_VERSION = 'roomAction-20260611-release-candidate-2';
+const ROOM_ACTION_VERSION = 'roomAction-20260728-rematch-consent-3';
 const DIAGNOSTIC_ACTIONS = new Set([
   'selfTestMove',
   'selfTestMatch',
@@ -24,6 +24,13 @@ const DIAGNOSTIC_ACTIONS = new Set([
 
 function createBoard() {
   return Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(EMPTY));
+}
+
+function createRestartReady() {
+  return {
+    host: false,
+    guest: false,
+  };
 }
 
 function normalizeBoard(board) {
@@ -166,6 +173,7 @@ async function joinRoomForOpenId(targetRoomId, openId) {
           color: 'white',
         }),
         status: 'playing',
+        restartReady: _.set(createRestartReady()),
         updatedAt: db.serverDate(),
       },
     });
@@ -205,6 +213,10 @@ async function placePieceForOpenId(targetRoomId, targetRow, targetCol, openId) {
       return { success: false, error: '你不在当前房间中' };
     }
 
+    if (!room.host || !room.guest) {
+      return { success: false, error: '对手已退出，当前对局已结束' };
+    }
+
     if (room.currentTurn !== role) {
       return { success: false, error: '还没有轮到你落子' };
     }
@@ -236,6 +248,7 @@ async function placePieceForOpenId(targetRoomId, targetRow, targetCol, openId) {
         currentTurn: nextTurn,
         winner,
         status: nextStatus,
+        restartReady: _.set(createRestartReady()),
         updatedAt: db.serverDate(),
       },
     });
@@ -265,7 +278,8 @@ async function restartRoomForOpenId(targetRoomId, openId) {
       return { success: false, error: '房间不存在' };
     }
 
-    if (!getPlayerRole(room, openId)) {
+    const role = getPlayerRole(room, openId);
+    if (!role) {
       return { success: false, error: '你不在当前房间中' };
     }
 
@@ -277,6 +291,28 @@ async function restartRoomForOpenId(targetRoomId, openId) {
       return { success: false, error: '当前对局尚未结束' };
     }
 
+    const restartReady = {
+      ...createRestartReady(),
+      ...(room.restartReady || {}),
+      [role]: true,
+    };
+    const bothReady = restartReady.host && restartReady.guest;
+
+    if (!bothReady) {
+      await roomDoc.update({
+        data: {
+          restartReady: _.set(restartReady),
+          updatedAt: db.serverDate(),
+        },
+      });
+      return {
+        success: true,
+        restarted: false,
+        status: 'finished',
+        restartReady,
+      };
+    }
+
     const nextBoard = createBoard();
     await roomDoc.update({
       data: {
@@ -285,6 +321,7 @@ async function restartRoomForOpenId(targetRoomId, openId) {
         currentTurn: 'host',
         winner: null,
         status: 'playing',
+        restartReady: _.set(createRestartReady()),
         updatedAt: db.serverDate(),
       },
     });
@@ -295,7 +332,44 @@ async function restartRoomForOpenId(targetRoomId, openId) {
       currentTurn: 'host',
       winner: null,
       status: 'playing',
+      restarted: true,
+      restartReady: createRestartReady(),
     };
+  });
+}
+
+async function leaveRoomForOpenId(targetRoomId, openId) {
+  if (!targetRoomId) {
+    return { success: false, error: '房间号不能为空' };
+  }
+
+  return runTransactionWithRetry(async transaction => {
+    const roomDoc = transaction.collection('rooms').doc(targetRoomId);
+    const roomRes = await roomDoc.get();
+    const room = roomRes.data;
+    if (!room) return { success: true };
+
+    const role = getPlayerRole(room, openId);
+    if (!role) return { success: true };
+
+    if (role === 'host') {
+      await roomDoc.remove();
+      return { success: true, roomClosed: true };
+    }
+
+    await roomDoc.update({
+      data: {
+        guest: null,
+        status: 'waiting',
+        currentTurn: 'host',
+        board: _.set(createBoard()),
+        lastMove: null,
+        winner: null,
+        restartReady: _.set(createRestartReady()),
+        updatedAt: db.serverDate(),
+      },
+    });
+    return { success: true, opponentLeft: true };
   });
 }
 
@@ -336,6 +410,7 @@ exports.main = async (event = {}) => {
             lastMove: null,
             winner: null,
             status: 'waiting',
+            restartReady: createRestartReady(),
             createdAt: db.serverDate(),
             updatedAt: db.serverDate(),
           };
@@ -719,40 +794,7 @@ exports.main = async (event = {}) => {
         };
 
       case 'leaveRoom': {
-        if (!roomId) {
-          return { success: false, error: '房间号不能为空' };
-        }
-
-        const roomRes = await rooms.doc(roomId).get();
-        const room = roomRes.data;
-
-        if (!room) {
-          return { success: true };
-        }
-
-        const role = getPlayerRole(room, callerOpenId);
-        if (!role) {
-          return { success: true };
-        }
-
-        if (role === 'host') {
-          await rooms.doc(roomId).remove();
-          return { success: true };
-        }
-
-        await rooms.doc(roomId).update({
-          data: {
-            guest: null,
-            status: 'waiting',
-            currentTurn: 'host',
-            board: _.set(createBoard()),
-            lastMove: null,
-            winner: null,
-            updatedAt: db.serverDate(),
-          },
-        });
-
-        return { success: true };
+        return leaveRoomForOpenId(roomId, callerOpenId);
       }
 
       default:

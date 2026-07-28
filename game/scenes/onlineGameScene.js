@@ -24,6 +24,8 @@ class OnlineGameScene {
     this.syncing = false;
     this.moveSubmitting = false;
     this.restartSubmitting = false;
+    this.restartReady = false;
+    this.opponentRestartReady = false;
     this.watcher = null;
     this.restartTimer = null;
     this.boardRect = null;
@@ -98,6 +100,10 @@ class OnlineGameScene {
     this.boardLocked = viewState.boardLocked;
     this.syncing = false;
     this.moveSubmitting = false;
+    const restartReady = (roomData && roomData.restartReady) || {};
+    this.restartReady = Boolean(restartReady[this.role]);
+    const opponentRole = this.role === 'host' ? 'guest' : 'host';
+    this.opponentRestartReady = Boolean(restartReady[opponentRole]);
 
     if (roomData && Array.isArray(roomData.board)) {
       this.board = normalizeBoard(roomData.board);
@@ -190,8 +196,10 @@ class OnlineGameScene {
       y,
       width: (width - 64) / 2,
       height: 46,
-      text: this.restartSubmitting ? '处理中...' : '再来一局',
-      disabled: this.restartSubmitting,
+      text: this.restartSubmitting
+        ? '正在确认…'
+        : (this.restartReady ? '已准备，等待对手' : (this.opponentRestartReady ? '同意再来一局' : '再来一局')),
+      disabled: this.restartSubmitting || this.restartReady,
       onTap: () => this.restartRoom(),
     });
 
@@ -210,7 +218,7 @@ class OnlineGameScene {
     if (this.resultText === '你获胜') {
       return {
         title: '漂亮！你赢下了这一局',
-        subtitle: '棋逢对手，不妨再来一盘',
+        subtitle: this.getRestartSubtitle('棋逢对手，不妨再来一盘'),
         color: COLORS.jade,
         fill: '#EFF7F2',
         stroke: '#CDE3D5',
@@ -219,7 +227,7 @@ class OnlineGameScene {
     if (this.resultText === '对手获胜') {
       return {
         title: '这一局惜败，再来一盘吧',
-        subtitle: '复盘一手，下一局扳回来',
+        subtitle: this.getRestartSubtitle('复盘一手，下一局扳回来'),
         color: COLORS.danger,
         fill: '#FBF1EE',
         stroke: '#EBCFC7',
@@ -227,11 +235,17 @@ class OnlineGameScene {
     }
     return {
       title: '势均力敌，本局和棋',
-      subtitle: '难分高下，再战一局见真章',
+      subtitle: this.getRestartSubtitle('难分高下，再战一局见真章'),
       color: '#79551D',
       fill: '#FBF5E8',
       stroke: '#E8D7B6',
     };
+  }
+
+  getRestartSubtitle(defaultText) {
+    if (this.restartReady) return '你已准备，等待对手确认后自动开局';
+    if (this.opponentRestartReady) return '对手已准备，等你确认是否继续';
+    return defaultText;
   }
 
   handleTouch(x, y) {
@@ -259,18 +273,21 @@ class OnlineGameScene {
   restartRoom() {
     if (!this.gameOver || this.restartSubmitting) return;
     this.restartSubmitting = true;
-    this.syncing = true;
-    this.statusText = '正在开始新对局...';
+    this.statusText = '正在发送再战确认…';
     this.runtime.manager.render();
 
     this.runtime.cloud.restartRoom(this.roomId)
+      .then(result => {
+        if (!this.active || !result) return;
+        this.restartReady = !result.restarted;
+        this.statusText = result.restarted ? '新一局开始' : '已准备，等待对手确认';
+      })
       .catch(err => {
         this.statusText = err.message || '再来一局失败';
       })
       .finally(() => {
-        this.loadRoom().finally(() => {
-          this.restartSubmitting = false;
-        });
+        this.restartSubmitting = false;
+        if (this.active) this.loadRoom();
       });
   }
 

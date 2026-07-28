@@ -33,6 +33,8 @@ function createContextMock() {
     stroke: noop,
     fill: noop,
     arc: noop,
+    clip: noop,
+    drawImage: noop,
     fillText: noop,
     createRadialGradient() {
       return { addColorStop: noop };
@@ -42,6 +44,7 @@ function createContextMock() {
 
 function createWxMock() {
   const ctx = createContextMock();
+  const storage = {};
   return {
     touchHandler: null,
     showHandler: null,
@@ -67,6 +70,50 @@ function createWxMock() {
       return this.launchOptions || {};
     },
     setClipboardData() {},
+    getStorageSync(key) {
+      return storage[key];
+    },
+    setStorageSync(key, value) {
+      storage[key] = value;
+    },
+    showToast() {},
+    chooseImage(options) {
+      options.success({ tempFilePaths: ['wxfile://tmp/avatar.jpg'] });
+    },
+    getFileSystemManager() {
+      return {
+        saveFile(options) {
+          options.success({ savedFilePath: 'wxfile://saved/avatar.jpg' });
+        },
+      };
+    },
+    showKeyboard(options) {
+      this.keyboardOptions = options;
+    },
+    hideKeyboard() {},
+    onKeyboardConfirm(handler) {
+      this.keyboardHandler = handler;
+    },
+    offKeyboardConfirm(handler) {
+      if (this.keyboardHandler === handler) this.keyboardHandler = null;
+    },
+    createUserInfoButton(options) {
+      const button = {
+        options,
+        destroyed: false,
+        onTap(handler) {
+          this.tapHandler = handler;
+        },
+        destroy() {
+          this.destroyed = true;
+        },
+        trigger(result) {
+          this.tapHandler(result);
+        },
+      };
+      this.lastUserInfoButton = button;
+      return button;
+    },
     shareAppMessage(options) {
       this.lastSharePayload = options;
     },
@@ -77,10 +124,89 @@ function createWxMock() {
       },
       callFunction(options) {
         this.callFunctionCalls.push(options);
+        if (options.name === 'login') {
+          return Promise.resolve({ result: { openid: 'test-wechat-openid' } });
+        }
         return Promise.resolve({ result: { success: true } });
       },
     },
   };
+}
+
+async function verifyWeChatLogin() {
+  const { wx, runtime } = createStartedRuntime();
+  const scene = runtime.manager.current;
+  assert(!scene.player, 'home scene should begin logged out without a stored session');
+
+  assert(wx.lastUserInfoButton, 'home scene must create the official WeChat user info button');
+  wx.lastUserInfoButton.trigger({
+    userInfo: {
+      nickName: '棋友小徐',
+      avatarUrl: 'https://example.com/avatar.png',
+    },
+  });
+  await flush();
+  await flush();
+
+  assert(scene.player && scene.player.openId === 'test-wechat-openid', 'WeChat login must save the cloud OpenID');
+  assert(scene.player.nickname === '棋友小徐', 'WeChat login must use the authorized nickname by default');
+  assert(scene.player.wechatAvatarUrl.includes('avatar.png'), 'WeChat login must save the authorized avatar');
+  assert(wx.lastUserInfoButton.destroyed, 'native login button must be destroyed after login');
+  assert(wx.cloud.callFunctionCalls.some(call => call.name === 'login'), 'WeChat login must call the login cloud function');
+
+  runtime.manager.go('home');
+  assert(runtime.manager.current.player.openId === 'test-wechat-openid', 'stored WeChat login must survive scene recreation');
+
+  runtime.manager.go('profile');
+  const profileScene = runtime.manager.current;
+  profileScene.editNickname();
+  const confirmNickname = wx.keyboardHandler;
+  confirmNickname({ value: '自定义棋手' });
+  assert(profileScene.player.nickname === '自定义棋手', 'player must be able to choose a custom nickname');
+  profileScene.chooseCustomAvatar();
+  assert(profileScene.player.avatarMode === 'custom', 'player must be able to choose an album avatar');
+  assert(profileScene.player.customAvatarPath.includes('saved/avatar.jpg'), 'album avatar must be persisted locally');
+
+  runtime.manager.go('home');
+  assert(runtime.manager.current.player.nickname === '自定义棋手', 'custom profile must persist on the home scene');
+}
+
+function verifyRematchAndDepartureViewState() {
+  const scene = new OnlineGameScene({
+    manager: {
+      render() {},
+      go() {},
+    },
+  }, {
+    roomId: '123456',
+    role: 'host',
+    color: 'black',
+  });
+  scene.active = true;
+
+  scene.applyRoom({
+    status: 'finished',
+    currentTurn: 'host',
+    winner: 'host',
+    restartReady: { host: true, guest: false },
+    board: board.createBoard(),
+  });
+  assert(scene.restartReady, 'local restart confirmation must be reflected in the result scene');
+  assert(!scene.opponentRestartReady, 'opponent must remain unready until they confirm');
+  assert(scene.boardLocked, 'finished board must stay locked while waiting for rematch consent');
+
+  scene.applyRoom({
+    status: 'finished',
+    currentTurn: 'host',
+    winner: 'host',
+    restartReady: { host: false, guest: true },
+    board: board.createBoard(),
+  });
+  assert(scene.opponentRestartReady, 'opponent restart confirmation must be visible');
+
+  scene.applyRoom(null);
+  assert(scene.boardLocked, 'removed room must lock the remaining player board immediately');
+  assert(scene.statusText.includes('不存在'), 'removed room must clearly tell the remaining player');
 }
 
 function createStartedRuntime() {
@@ -351,6 +477,7 @@ async function verifyCopyFailureFeedback() {
 
 async function main() {
   verifyRuntimeBoot();
+  await verifyWeChatLogin();
   verifyLocalBoardTap();
   verifyJoinKeypad();
   await verifyJoinClipboardPaste();
@@ -361,6 +488,7 @@ async function main() {
   verifyTouchLayouts();
   await verifyStaleJoinCannotChangeScene();
   verifyHostReturnsToWaitingWhenGuestLeaves();
+  verifyRematchAndDepartureViewState();
   await verifyCopyFeedback(CreateRoomScene, {}, 'create room scene');
   await verifyCopyFeedback(WaitRoomScene, {
     roomId: '123456',

@@ -14,8 +14,8 @@ game/
   design/
     theme.js                    全局颜色、圆角和布局规范
   core/                         输入、云调用、场景管理
-  renderers/                    棋盘、按钮、卡片、文字绘制
-  scenes/                       首页、本机、创建、加入、等待、联机对战
+  renderers/                    棋盘、按钮、卡片、头像、文字绘制
+  scenes/                       首页、玩家资料、本机、创建、加入、等待、联机对战
 services/
   roomService.js                客户端房间云接口
 utils/
@@ -23,6 +23,7 @@ utils/
   onlineGameState.js            联机状态映射
   clipboard.js                  房间号复制、自动识别与 Toast 反馈
   share.js                      好友邀请参数、分享入口房间号解析
+  playerSession.js              微信身份与玩家头像昵称本地状态
 cloudfunctions/
   login/                        获取玩家 OpenID
   roomAction/                   创建、加入、落子、重开、退出的服务端裁判
@@ -57,6 +58,32 @@ Canvas 场景
 - 页面组件统一复用 `theme.js`、`cardRenderer.js`、`buttonRenderer.js`。
 - 交互层级：每页只有一个最主要操作；复制、返回、离开均使用次级样式。
 - 文案定位：中文、短句、对局感明确，不使用密码式房间号占位。
+
+## 登录与玩家资料
+
+```text
+首页微信快捷登录
+  → wx.createUserInfoButton（玩家主动授权）
+  → login 云函数获取 OpenID
+  → 微信昵称 / 微信头像
+  → playerSession 本地持久化
+```
+
+- 玩家拒绝昵称头像授权时仍可使用系统默认头像继续游戏。
+- 玩家资料页支持微信头像昵称、相册自选头像、系统默认头像和自定义游戏昵称。
+- 相册头像通过 `FileSystemManager.saveFile` 保存到小游戏本地文件沙箱。
+- OpenID 不显示给其他玩家，仅用于识别同一微信用户。
+
+## 再来一局状态机
+
+```text
+finished
+  → 一方点击：记录 restartReady，保持结束棋盘并锁定
+  → 双方点击：清盘并进入 playing
+  → 任一方退出：清除 restartReady，剩余玩家不可继续落子
+```
+
+再战确认、退出和落子均由 `roomAction` 事务校验，客户端不能直接修改房间状态。
 
 ## 工程与发布配置
 

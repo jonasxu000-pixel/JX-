@@ -241,7 +241,22 @@ async function verifyRestartRoom(roomAction) {
   await call(roomAction, 'guest-openid', { action: 'placePiece', roomId, row: 1, col: 3 });
   await call(roomAction, 'host-openid', { action: 'placePiece', roomId, row: 0, col: 4 });
 
-  const restarted = await call(roomAction, 'guest-openid', { action: 'restartRoom', roomId });
+  const guestReady = await call(roomAction, 'guest-openid', { action: 'restartRoom', roomId });
+  assert(guestReady.status === 'finished', 'one restart confirmation must keep the finished board');
+  assert(!guestReady.restarted, 'one restart confirmation must not restart the room');
+  assert(guestReady.restartReady.guest, 'guest restart confirmation must be recorded');
+  assert(!guestReady.restartReady.host, 'host must still confirm the restart');
+  const finishedRoom = rooms.get(roomId);
+  assert(finishedRoom.board[0][4] === 1, 'one restart confirmation must preserve the finished board');
+  await expectFail(roomAction, 'host-openid', {
+    action: 'placePiece',
+    roomId,
+    row: 2,
+    col: 2,
+  }, 'move while waiting for restart consent');
+
+  const restarted = await call(roomAction, 'host-openid', { action: 'restartRoom', roomId });
+  assert(restarted.restarted, 'second restart confirmation should restart the room');
   assert(restarted.status === 'playing', 'restart should put room back into playing state');
   assert(restarted.currentTurn === 'host', 'restart should let host black move first');
   assert(restarted.winner === null, 'restart should clear winner');
@@ -249,6 +264,50 @@ async function verifyRestartRoom(roomAction) {
 
   await expectFail(roomAction, 'outsider-openid', { action: 'restartRoom', roomId }, 'outsider restart');
   await expectFail(roomAction, 'host-openid', { action: 'restartRoom', roomId }, 'restart while playing');
+}
+
+async function verifyLeaveLocksOpponent(roomAction) {
+  const guestLeaveRoomId = await createPlayingRoom(roomAction);
+  await call(roomAction, 'guest-openid', { action: 'leaveRoom', roomId: guestLeaveRoomId });
+  const waitingRoom = rooms.get(guestLeaveRoomId);
+  assert(waitingRoom.status === 'waiting', 'guest leave must return room to waiting');
+  assert(waitingRoom.guest === null, 'guest leave must clear the guest identity');
+  assert(!waitingRoom.restartReady.host && !waitingRoom.restartReady.guest, 'guest leave must clear restart consent');
+  await expectFail(roomAction, 'host-openid', {
+    action: 'placePiece',
+    roomId: guestLeaveRoomId,
+    row: 7,
+    col: 7,
+  }, 'host move after guest leave');
+
+  const hostLeaveRoomId = await createPlayingRoom(roomAction);
+  await call(roomAction, 'host-openid', { action: 'leaveRoom', roomId: hostLeaveRoomId });
+  assert(!rooms.has(hostLeaveRoomId), 'host leave must close the room');
+}
+
+async function verifyConcurrentRestartConsent(roomAction) {
+  const roomId = await createPlayingRoom(roomAction);
+  const finishedRoom = rooms.get(roomId);
+  finishedRoom.status = 'finished';
+  finishedRoom.winner = 'host';
+  finishedRoom.board[0][0] = 1;
+  finishedRoom.restartReady = { host: false, guest: false };
+  rooms.set(roomId, finishedRoom);
+
+  currentOpenId = 'host-openid';
+  const hostReady = roomAction.main({ action: 'restartRoom', roomId });
+  currentOpenId = 'guest-openid';
+  const guestReady = roomAction.main({ action: 'restartRoom', roomId });
+  const results = await Promise.all([hostReady, guestReady]);
+  const restarted = results.filter(result => result.success && result.restarted);
+  const waiting = results.filter(result => result.success && !result.restarted);
+  const savedRoom = rooms.get(roomId);
+
+  assert(restarted.length === 1, 'concurrent restart consent must restart exactly once');
+  assert(waiting.length === 1, 'first concurrent restart consent must wait for the opponent');
+  assert(savedRoom.status === 'playing', 'both concurrent confirmations must start the new round');
+  assert(savedRoom.board.every(row => row.every(piece => piece === 0)), 'concurrent restart must clear the board once');
+  assert(!savedRoom.restartReady.host && !savedRoom.restartReady.guest, 'new round must clear both restart confirmations');
 }
 
 async function verifyConcurrentMoveIsAtomic(roomAction) {
@@ -375,7 +434,7 @@ async function verifyDiagnosticsDisabledByDefault(roomAction) {
 async function verifyHealthPing(roomAction) {
   delete process.env.ENABLE_ROOM_DIAGNOSTICS;
   const result = await call(roomAction, 'host-openid', { action: 'ping' });
-  assert(result.version === 'roomAction-20260611-release-candidate-2', 'health ping should expose deployed version');
+  assert(result.version === 'roomAction-20260728-rematch-consent-3', 'health ping should expose deployed version');
 }
 
 async function main() {
@@ -386,6 +445,8 @@ async function main() {
   await verifyGuestWhiteWin(roomAction);
   await verifyFullBoardDraw(roomAction);
   await verifyRestartRoom(roomAction);
+  await verifyConcurrentRestartConsent(roomAction);
+  await verifyLeaveLocksOpponent(roomAction);
   await verifyConcurrentMoveIsAtomic(roomAction);
   await verifyTransactionConflictRetries(roomAction);
   await verifyConcurrentJoinIsAtomic(roomAction);
