@@ -1,5 +1,6 @@
 const { drawButton } = require('../renderers/buttonRenderer');
 const { drawTitle, drawSubtitle, drawLabel } = require('../renderers/textRenderer');
+const { copyText, showToast } = require('../../utils/clipboard');
 
 class WaitRoomScene {
   constructor(runtime, params) {
@@ -11,6 +12,8 @@ class WaitRoomScene {
     this.watcher = null;
     this.restartTimer = null;
     this.active = false;
+    this.copying = false;
+    this.copyMessage = '';
   }
 
   onEnter() {
@@ -108,8 +111,29 @@ class WaitRoomScene {
       .finally(() => this.runtime.manager.go('home'));
   }
 
+  copyRoomId() {
+    if (!this.roomId || this.copying) return;
+    this.copying = true;
+    this.copyMessage = '正在复制房间号...';
+    this.runtime.manager.render();
+
+    copyText(this.runtime.wx, this.roomId)
+      .then(() => {
+        this.copyMessage = `房间号 ${this.roomId} 已复制`;
+        showToast(this.runtime.wx, '房间号已复制', 'success');
+      })
+      .catch(() => {
+        this.copyMessage = '复制失败，请重新点击';
+        showToast(this.runtime.wx, '复制失败，请重试');
+      })
+      .finally(() => {
+        this.copying = false;
+        this.runtime.manager.render();
+      });
+  }
+
   render(ctx, input) {
-    const { width, wx } = this.runtime;
+    const { width } = this.runtime;
     const buttonWidth = Math.min(width - 64, 280);
     const x = (width - buttonWidth) / 2;
 
@@ -125,18 +149,19 @@ class WaitRoomScene {
     ctx.fillText(this.roomId || '------', width / 2, 222);
 
     drawLabel(ctx, this.role === 'host' ? '你执黑，先手' : '你执白，后手', width / 2, 314, 'center');
-    if (this.error) drawLabel(ctx, this.error, width / 2, 350, 'center');
+    if (this.error || this.copyMessage) {
+      drawLabel(ctx, this.error || this.copyMessage, width / 2, 350, 'center');
+    }
 
     drawButton(ctx, input, {
       x,
       y: 386,
       width: buttonWidth,
       height: 50,
-      text: '复制房间号',
+      text: this.copying ? '正在复制...' : '复制房间号',
+      disabled: this.copying,
       fill: '#295f92',
-      onTap: () => {
-        if (wx.setClipboardData) wx.setClipboardData({ data: this.roomId });
-      },
+      onTap: () => this.copyRoomId(),
     });
 
     drawButton(ctx, input, {

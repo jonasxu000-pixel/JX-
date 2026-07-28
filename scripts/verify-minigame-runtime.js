@@ -1,9 +1,15 @@
 const { createRuntime, CLOUD_ENV } = require('../game/runtime');
 const board = require('../utils/board');
+const CreateRoomScene = require('../game/scenes/createRoomScene');
 const OnlineGameScene = require('../game/scenes/onlineGameScene');
+const WaitRoomScene = require('../game/scenes/waitRoomScene');
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
+}
+
+function flush() {
+  return new Promise(resolve => setImmediate(resolve));
 }
 
 function createContextMock() {
@@ -53,8 +59,13 @@ function createWxMock() {
     },
     setClipboardData() {},
     cloud: {
+      callFunctionCalls: [],
       init(options) {
         this.initOptions = options;
+      },
+      callFunction(options) {
+        this.callFunctionCalls.push(options);
+        return Promise.resolve({ result: { success: true } });
       },
     },
   };
@@ -73,6 +84,10 @@ function verifyRuntimeBoot() {
   assert(typeof wx.touchHandler === 'function', 'runtime must register touch input');
   assert(typeof wx.showHandler === 'function', 'runtime must register foreground recovery');
   assert(runtime.manager.current.constructor.name === 'HomeScene', 'runtime must boot into HomeScene');
+  assert(
+    wx.cloud.callFunctionCalls.some(call => call.name === 'roomAction' && call.data.action === 'ping'),
+    'runtime must prewarm roomAction on startup',
+  );
 }
 
 function verifyLocalBoardTap() {
@@ -144,12 +159,73 @@ function verifyHostReturnsToWaitingWhenGuestLeaves() {
   assert(transitions[0].params.role === 'host', 'host role must be preserved while waiting');
 }
 
+async function verifyCopyFeedback(SceneType, params, label) {
+  const toasts = [];
+  let copiedText = '';
+  const runtime = {
+    wx: {
+      setClipboardData(options) {
+        copiedText = options.data;
+        options.success();
+      },
+      showToast(options) {
+        toasts.push(options);
+      },
+    },
+    manager: {
+      render() {},
+    },
+  };
+  const scene = new SceneType(runtime, params);
+  if (!scene.roomId) scene.roomId = '123456';
+
+  scene.copyRoomId();
+  await flush();
+
+  assert(copiedText === '123456', `${label} must copy the full room id`);
+  assert(scene.copyMessage.includes('已复制'), `${label} must show persistent copy success feedback`);
+  assert(toasts.some(toast => toast.title === '房间号已复制'), `${label} must show a success toast`);
+  assert(!scene.copying, `${label} copy button must unlock after success`);
+}
+
+async function verifyCopyFailureFeedback() {
+  const toasts = [];
+  const scene = new CreateRoomScene({
+    wx: {
+      setClipboardData(options) {
+        options.fail({ errMsg: 'clipboard denied' });
+      },
+      showToast(options) {
+        toasts.push(options);
+      },
+    },
+    manager: {
+      render() {},
+    },
+  });
+  scene.roomId = '123456';
+
+  scene.copyRoomId();
+  await flush();
+
+  assert(scene.copyMessage.includes('复制失败'), 'copy failure must be visible on the Canvas page');
+  assert(toasts.some(toast => toast.title === '复制失败，请重试'), 'copy failure must show a toast');
+  assert(!scene.copying, 'copy button must unlock after failure');
+}
+
 async function main() {
   verifyRuntimeBoot();
   verifyLocalBoardTap();
   verifyJoinKeypad();
   await verifyStaleJoinCannotChangeScene();
   verifyHostReturnsToWaitingWhenGuestLeaves();
+  await verifyCopyFeedback(CreateRoomScene, {}, 'create room scene');
+  await verifyCopyFeedback(WaitRoomScene, {
+    roomId: '123456',
+    role: 'host',
+    color: 'black',
+  }, 'wait room scene');
+  await verifyCopyFailureFeedback();
   console.log('mini game runtime checks ok');
 }
 

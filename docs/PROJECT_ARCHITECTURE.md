@@ -19,6 +19,7 @@ services/
 utils/
   board.js                      棋盘与胜负基础规则
   onlineGameState.js            联机状态映射
+  clipboard.js                  房间号复制与 Toast 反馈
 cloudfunctions/
   login/                        获取玩家 OpenID
   roomAction/                   创建、加入、落子、重开、退出的服务端裁判

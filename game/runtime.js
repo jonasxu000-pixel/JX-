@@ -49,6 +49,7 @@ function createRuntime(wxApi) {
         env: CLOUD_ENV,
         traceUser: true,
       });
+      cloud.warmUp().catch(() => {});
     }
 
     if (wxApi.onTouchStart) {

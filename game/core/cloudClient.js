@@ -3,6 +3,22 @@ const roomService = require('../../services/roomService');
 class CloudClient {
   constructor(wxApi) {
     this.wx = wxApi;
+    this.warmUpStarted = false;
+  }
+
+  warmUp() {
+    if (this.warmUpStarted) return Promise.resolve();
+    this.warmUpStarted = true;
+
+    const cloud = this.wx && this.wx.cloud;
+    if (!cloud || typeof cloud.callFunction !== 'function') {
+      return Promise.resolve();
+    }
+
+    return cloud.callFunction({
+      name: 'roomAction',
+      data: { action: 'ping' },
+    }).then(() => undefined);
   }
 
   createRoom() {
