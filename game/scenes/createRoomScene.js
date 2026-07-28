@@ -1,6 +1,9 @@
 const { drawButton } = require('../renderers/buttonRenderer');
 const { drawTitle, drawSubtitle, drawLabel } = require('../renderers/textRenderer');
+const { drawPill, drawRoomCodeCard } = require('../renderers/cardRenderer');
+const { COLORS } = require('../design/theme');
 const { copyText, showToast } = require('../../utils/clipboard');
+const { shareRoom } = require('../../utils/share');
 
 class CreateRoomScene {
   constructor(runtime) {
@@ -77,51 +80,90 @@ class CreateRoomScene {
       });
   }
 
+  inviteFriend() {
+    if (!this.roomId) return;
+    try {
+      shareRoom(this.runtime.wx, this.roomId);
+      showToast(this.runtime.wx, '请选择好友发送邀请', 'none');
+    } catch (err) {
+      this.copyMessage = '暂时无法唤起分享，已为你复制房间号';
+      this.copyRoomId();
+    }
+    this.runtime.manager.go('waitRoom', {
+      roomId: this.roomId,
+      role: 'host',
+      color: 'black',
+    });
+  }
+
   render(ctx, input) {
     const { width, manager } = this.runtime;
     const buttonWidth = Math.min(width - 64, 280);
     const x = (width - buttonWidth) / 2;
 
-    drawTitle(ctx, '创建房间', width / 2, 86);
+    drawTitle(ctx, '创建好友房', width / 2, 58);
     drawSubtitle(
       ctx,
       this.loading
         ? (this.slowResponse ? '云端正在响应，请稍候...' : '正在创建房间...')
-        : '把房间号发给另一台手机',
+        : '房间已准备好，邀请好友开局',
       width / 2,
-      126,
+      92,
     );
 
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(40, 164, width - 80, 120);
-    ctx.fillStyle = '#22342d';
-    ctx.font = 'bold 42px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(this.roomId || (this.loading ? '创建中…' : '------'), width / 2, 224);
+    if (this.loading) {
+      drawPill(ctx, {
+        x: width / 2 - 62,
+        y: 112,
+        width: 124,
+        text: this.slowResponse ? '云端连接中' : '正在创建',
+        fill: COLORS.blueSoft,
+        color: COLORS.blue,
+      });
+    }
+    drawRoomCodeCard(ctx, {
+      x: 32,
+      y: 150,
+      width: width - 64,
+      roomId: this.roomId,
+    });
 
     if (this.error || this.copyMessage) {
-      drawLabel(ctx, this.error || this.copyMessage, width / 2, 312, 'center');
+      drawLabel(ctx, this.error || this.copyMessage, width / 2, 298, 'center', {
+        size: 14,
+        color: this.error ? COLORS.danger : COLORS.inkMuted,
+      });
     }
 
     drawButton(ctx, input, {
       x,
-      y: 340,
+      y: 326,
+      width: buttonWidth,
+      height: 50,
+      text: '邀请微信好友',
+      disabled: !this.roomId,
+      onTap: () => this.inviteFriend(),
+    });
+
+    drawButton(ctx, input, {
+      x,
+      y: 390,
       width: buttonWidth,
       height: 50,
       text: this.copying ? '正在复制...' : '复制房间号',
       disabled: !this.roomId || this.copying,
-      fill: '#295f92',
+      variant: 'secondary',
       onTap: () => this.copyRoomId(),
     });
 
     drawButton(ctx, input, {
       x,
-      y: 406,
+      y: 454,
       width: buttonWidth,
       height: 50,
-      text: '进入等待',
+      text: '进入房间等待',
       disabled: !this.roomId,
+      variant: 'gold',
       onTap: () => manager.go('waitRoom', {
         roomId: this.roomId,
         role: 'host',
@@ -131,13 +173,15 @@ class CreateRoomScene {
 
     drawButton(ctx, input, {
       x,
-      y: 472,
+      y: 518,
       width: buttonWidth,
-      height: 50,
+      height: 48,
       text: '返回首页',
-      fill: '#777777',
+      variant: 'ghost',
       onTap: () => manager.go('home'),
     });
+
+    drawSubtitle(ctx, '好友点击分享卡片后，房间号会自动带入', width / 2, 598);
   }
 }
 

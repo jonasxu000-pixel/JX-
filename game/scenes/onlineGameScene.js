@@ -3,6 +3,8 @@ const onlineGameState = require('../../utils/onlineGameState');
 const boardRenderer = require('../renderers/boardRenderer');
 const { drawButton } = require('../renderers/buttonRenderer');
 const { drawLabel } = require('../renderers/textRenderer');
+const { drawCard, drawPill } = require('../renderers/cardRenderer');
+const { COLORS } = require('../design/theme');
 
 class OnlineGameScene {
   constructor(runtime, params) {
@@ -130,8 +132,19 @@ class OnlineGameScene {
     this.boardRect = boardRenderer.getBoardRect(width, 122);
     const roleText = this.role === 'host' ? '黑棋' : '白棋';
 
-    drawLabel(ctx, `房间 ${this.roomId} · 你执${roleText}`, 24, 42);
-    drawLabel(ctx, this.syncing ? '正在同步...' : this.statusText, width / 2, 82, 'center');
+    drawLabel(ctx, `好友房 ${this.roomId}`, 20, 38, 'left', { bold: true, size: 17 });
+    drawPill(ctx, {
+      x: width - 102,
+      y: 24,
+      width: 82,
+      text: `你执${roleText}`,
+      fill: this.role === 'host' ? COLORS.goldSoft : COLORS.blueSoft,
+      color: this.role === 'host' ? '#79551D' : COLORS.blue,
+    });
+    drawLabel(ctx, this.syncing ? '正在同步棋局…' : this.statusText, width / 2, 82, 'center', {
+      bold: this.isMyTurn,
+      color: this.isMyTurn ? COLORS.jade : COLORS.ink,
+    });
     boardRenderer.drawBoard(ctx, this.board, this.lastMove, this.boardRect);
 
     if (this.shouldShowResult) {
@@ -142,8 +155,8 @@ class OnlineGameScene {
         y: this.boardRect.y + this.boardRect.height + 24,
         width: 240,
         height: 46,
-        text: '返回首页',
-        fill: '#777777',
+        text: '退出本局',
+        variant: 'ghost',
         onTap: () => this.leaveToHome(),
       });
     }
@@ -151,8 +164,26 @@ class OnlineGameScene {
 
   renderResultActions(ctx, input) {
     const { width } = this.runtime;
-    const y = this.boardRect.y + this.boardRect.height + 24;
-    drawLabel(ctx, this.resultText, width / 2, y - 18, 'center');
+    const cardY = this.boardRect.y + this.boardRect.height + 14;
+    const y = cardY + 62;
+    const presentation = this.getResultPresentation();
+    drawCard(ctx, {
+      x: 16,
+      y: cardY,
+      width: width - 32,
+      height: 112,
+      fill: presentation.fill,
+      stroke: presentation.stroke,
+    });
+    drawLabel(ctx, presentation.title, width / 2, cardY + 28, 'center', {
+      bold: true,
+      size: 17,
+      color: presentation.color,
+    });
+    drawLabel(ctx, presentation.subtitle, width / 2, cardY + 50, 'center', {
+      size: 12,
+      color: COLORS.inkMuted,
+    });
 
     drawButton(ctx, input, {
       x: 24,
@@ -161,7 +192,6 @@ class OnlineGameScene {
       height: 46,
       text: this.restartSubmitting ? '处理中...' : '再来一局',
       disabled: this.restartSubmitting,
-      fill: '#295f92',
       onTap: () => this.restartRoom(),
     });
 
@@ -171,9 +201,37 @@ class OnlineGameScene {
       width: (width - 64) / 2,
       height: 46,
       text: '返回首页',
-      fill: '#777777',
+      variant: 'ghost',
       onTap: () => this.leaveToHome(),
     });
+  }
+
+  getResultPresentation() {
+    if (this.resultText === '你获胜') {
+      return {
+        title: '漂亮！你赢下了这一局',
+        subtitle: '棋逢对手，不妨再来一盘',
+        color: COLORS.jade,
+        fill: '#EFF7F2',
+        stroke: '#CDE3D5',
+      };
+    }
+    if (this.resultText === '对手获胜') {
+      return {
+        title: '这一局惜败，再来一盘吧',
+        subtitle: '复盘一手，下一局扳回来',
+        color: COLORS.danger,
+        fill: '#FBF1EE',
+        stroke: '#EBCFC7',
+      };
+    }
+    return {
+      title: '势均力敌，本局和棋',
+      subtitle: '难分高下，再战一局见真章',
+      color: '#79551D',
+      fill: '#FBF5E8',
+      stroke: '#E8D7B6',
+    };
   }
 
   handleTouch(x, y) {

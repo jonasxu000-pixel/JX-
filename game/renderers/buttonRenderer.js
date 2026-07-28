@@ -1,3 +1,34 @@
+const { COLORS, LAYOUT } = require('../design/theme');
+const { roundedRectPath } = require('./cardRenderer');
+
+const VARIANTS = {
+  primary: {
+    fill: COLORS.jade,
+    textColor: COLORS.white,
+    stroke: COLORS.jade,
+  },
+  secondary: {
+    fill: COLORS.blueSoft,
+    textColor: COLORS.blue,
+    stroke: '#C8DAE7',
+  },
+  gold: {
+    fill: COLORS.goldSoft,
+    textColor: '#79551D',
+    stroke: '#E7D2A8',
+  },
+  ghost: {
+    fill: COLORS.surface,
+    textColor: COLORS.inkMuted,
+    stroke: COLORS.line,
+  },
+  danger: {
+    fill: '#F5E4DF',
+    textColor: COLORS.danger,
+    stroke: '#E9CBC3',
+  },
+};
+
 function drawButton(ctx, input, options) {
   const {
     x,
@@ -7,28 +38,37 @@ function drawButton(ctx, input, options) {
     text,
     onTap,
     disabled,
-    fill = '#2f7d5c',
-    textColor = '#ffffff',
+    variant = 'primary',
+    fill,
+    textColor,
+    stroke,
+    fontSize = 16,
   } = options;
-  const radius = Math.min(18, height / 2);
+  const style = VARIANTS[variant] || VARIANTS.primary;
+  const resolvedFill = fill || style.fill;
+  const resolvedText = textColor || style.textColor;
+  const resolvedStroke = stroke || style.stroke;
+  const radius = Math.min(LAYOUT.buttonRadius, height / 2);
 
   ctx.save();
   ctx.globalAlpha = disabled ? 0.48 : 1;
-  ctx.fillStyle = fill;
-  ctx.beginPath();
-  ctx.moveTo(x + radius, y);
-  ctx.lineTo(x + width - radius, y);
-  ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
-  ctx.lineTo(x + width, y + height - radius);
-  ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-  ctx.lineTo(x + radius, y + height);
-  ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
-  ctx.lineTo(x, y + radius);
-  ctx.quadraticCurveTo(x, y, x + radius, y);
+  if (!disabled && variant === 'primary') {
+    ctx.shadowColor = 'rgba(37, 107, 82, 0.2)';
+    ctx.shadowBlur = 12;
+    ctx.shadowOffsetY = 4;
+  }
+  roundedRectPath(ctx, x, y, width, height, radius);
+  ctx.fillStyle = resolvedFill;
   ctx.fill();
+  ctx.shadowColor = 'transparent';
+  if (resolvedStroke) {
+    ctx.strokeStyle = resolvedStroke;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
 
-  ctx.fillStyle = textColor;
-  ctx.font = 'bold 17px sans-serif';
+  ctx.fillStyle = resolvedText;
+  ctx.font = `bold ${fontSize}px sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(text, x + width / 2, y + height / 2);
@@ -39,4 +79,5 @@ function drawButton(ctx, input, options) {
 
 module.exports = {
   drawButton,
+  VARIANTS,
 };

@@ -24,6 +24,7 @@ function verifySourceGuards() {
   const gameEntry = read('game.js');
   const runtimeSource = read('game/runtime.js');
   const joinSource = read('game/scenes/joinRoomScene.js');
+  const shareSource = read('utils/share.js');
   const onlineSource = read('game/scenes/onlineGameScene.js');
   const cloudSource = read('cloudfunctions/roomAction/index.js');
   const permissionDoc = read('docs/DATABASE_PERMISSIONS.md');
@@ -34,9 +35,13 @@ function verifySourceGuards() {
   assert(gameEntry.includes("require('./game/runtime')"), 'game.js must boot the Canvas runtime');
   assert(runtimeSource.includes('wxApi.createCanvas()'), 'runtime must create a Mini Game Canvas');
   assert(runtimeSource.includes('wxApi.onTouchStart'), 'runtime must register touch input');
-  assert(joinSource.includes('pasteRoomId'), 'join scene must support pasting a room id');
-  assert(joinSource.includes("digit || '—'"), 'join scene must render visibly empty room-id slots');
+  assert(joinSource.includes('autoFillFromClipboard'), 'join scene must automatically detect a copied room id');
+  assert(!joinSource.includes('一键粘贴房间号'), 'join scene must not require a manual paste button');
+  assert(joinSource.includes('if (digit) ctx.fillText'), 'join scene must render truly empty room-id slots');
   assert(!joinSource.includes("padEnd(6, '·')"), 'join scene must not use misleading password dots');
+  assert(runtimeSource.includes('getSharedRoomId'), 'runtime must accept room ids from share entry parameters');
+  assert(shareSource.includes('wxApi.shareAppMessage'), 'room sharing must use the Mini Game share API');
+  assert(shareSource.includes('query: `roomId='), 'room sharing must include a deep-link room id');
   assert(onlineSource.includes('placePiece'), 'online scene must use the cloud move action');
   assert(onlineSource.includes('restartRoom'), 'online scene must support another round');
   assert(cloudSource.includes('ENABLE_ROOM_DIAGNOSTICS'), 'cloud diagnostics must be release-gated');

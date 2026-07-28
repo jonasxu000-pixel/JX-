@@ -1,5 +1,7 @@
 const { drawButton } = require('../renderers/buttonRenderer');
 const { drawTitle, drawSubtitle } = require('../renderers/textRenderer');
+const { drawCard, drawPill } = require('../renderers/cardRenderer');
+const { COLORS } = require('../design/theme');
 
 class HomeScene {
   constructor(runtime) {
@@ -8,20 +10,42 @@ class HomeScene {
 
   render(ctx, input) {
     const { width, height, manager } = this.runtime;
-    const buttonWidth = Math.min(width - 64, 280);
+    const buttonWidth = Math.min(width - 56, 300);
     const x = (width - buttonWidth) / 2;
-    const startY = Math.max(210, height * 0.32);
+    const startY = Math.max(300, height * 0.43);
 
-    drawBrandStones(ctx, width / 2, 66);
-    drawTitle(ctx, '你棋没我硬', width / 2, 112);
-    drawSubtitle(ctx, '好友联机五子棋 · 落子见真章', width / 2, 150);
+    drawCard(ctx, {
+      x: 20,
+      y: 34,
+      width: width - 40,
+      height: 226,
+      fill: COLORS.surface,
+    });
+    drawBrandStones(ctx, width / 2, 84);
+    drawTitle(ctx, '你棋没我硬', width / 2, 132);
+    drawSubtitle(ctx, '好友联机五子棋 · 落子见真章', width / 2, 166);
+    drawPill(ctx, {
+      x: width / 2 - 108,
+      y: 196,
+      width: 100,
+      text: '好友实时联机',
+    });
+    drawPill(ctx, {
+      x: width / 2 + 8,
+      y: 196,
+      width: 100,
+      text: '无需注册',
+      fill: COLORS.goldSoft,
+      color: '#79551D',
+    });
 
     drawButton(ctx, input, {
       x,
       y: startY,
       width: buttonWidth,
       height: 52,
-      text: '本机对战',
+      text: '本机双人对战',
+      variant: 'gold',
       onTap: () => manager.go('localGame'),
     });
 
@@ -30,8 +54,7 @@ class HomeScene {
       y: startY + 72,
       width: buttonWidth,
       height: 52,
-      text: '创建房间',
-      fill: '#295f92',
+      text: '创建好友房',
       onTap: () => manager.go('createRoom'),
     });
 
@@ -40,12 +63,12 @@ class HomeScene {
       y: startY + 144,
       width: buttonWidth,
       height: 52,
-      text: '加入房间',
-      fill: '#8b5a2b',
+      text: '加入好友房',
+      variant: 'secondary',
       onTap: () => manager.go('joinRoom'),
     });
 
-    drawSubtitle(ctx, '房间号即开即用 · 对局实时同步', width / 2, startY + 220);
+    drawSubtitle(ctx, '创建房间 · 邀请好友 · 随时开局', width / 2, startY + 220);
   }
 }
 

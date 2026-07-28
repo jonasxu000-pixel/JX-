@@ -1,22 +1,24 @@
+const { COLORS } = require('../design/theme');
+
 function drawTitle(ctx, text, x, y) {
-  ctx.fillStyle = '#22342d';
-  ctx.font = 'bold 30px sans-serif';
+  ctx.fillStyle = COLORS.ink;
+  ctx.font = 'bold 29px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(text, x, y);
 }
 
 function drawSubtitle(ctx, text, x, y) {
-  ctx.fillStyle = '#61736b';
-  ctx.font = '15px sans-serif';
+  ctx.fillStyle = COLORS.inkMuted;
+  ctx.font = '14px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(text, x, y);
 }
 
-function drawLabel(ctx, text, x, y, align = 'left') {
-  ctx.fillStyle = '#31423b';
-  ctx.font = '16px sans-serif';
+function drawLabel(ctx, text, x, y, align = 'left', options = {}) {
+  ctx.fillStyle = options.color || COLORS.ink;
+  ctx.font = `${options.bold ? 'bold ' : ''}${options.size || 16}px sans-serif`;
   ctx.textAlign = align;
   ctx.textBaseline = 'middle';
   ctx.fillText(text, x, y);

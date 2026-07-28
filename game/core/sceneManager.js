@@ -1,4 +1,5 @@
 const InputManager = require('./inputManager');
+const { drawAppBackground } = require('../renderers/cardRenderer');
 
 class SceneManager {
   constructor(runtime) {
@@ -36,8 +37,7 @@ class SceneManager {
     const { ctx, width, height } = this.runtime;
     this.input.beginFrame();
     ctx.clearRect(0, 0, width, height);
-    ctx.fillStyle = '#f6f1e8';
-    ctx.fillRect(0, 0, width, height);
+    drawAppBackground(ctx, width, height);
 
     if (this.current && this.current.render) {
       this.current.render(ctx, this.input);

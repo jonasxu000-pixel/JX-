@@ -1,8 +1,13 @@
 const { createRuntime, CLOUD_ENV } = require('../game/runtime');
 const board = require('../utils/board');
 const CreateRoomScene = require('../game/scenes/createRoomScene');
+const HomeScene = require('../game/scenes/homeScene');
+const JoinRoomScene = require('../game/scenes/joinRoomScene');
+const LocalGameScene = require('../game/scenes/localGameScene');
 const OnlineGameScene = require('../game/scenes/onlineGameScene');
 const WaitRoomScene = require('../game/scenes/waitRoomScene');
+const InputManager = require('../game/core/inputManager');
+const { buildRoomSharePayload } = require('../utils/share');
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -58,7 +63,13 @@ function createWxMock() {
     onShow(handler) {
       this.showHandler = handler;
     },
+    getLaunchOptionsSync() {
+      return this.launchOptions || {};
+    },
     setClipboardData() {},
+    shareAppMessage(options) {
+      this.lastSharePayload = options;
+    },
     cloud: {
       callFunctionCalls: [],
       init(options) {
@@ -114,44 +125,126 @@ function verifyJoinKeypad() {
 
 async function verifyJoinClipboardPaste() {
   const { wx, runtime } = createStartedRuntime();
-  const toasts = [];
   wx.getClipboardData = options => {
     options.success({ data: '好友发来的房间号：654321' });
-  };
-  wx.showToast = options => {
-    toasts.push(options);
   };
 
   runtime.manager.go('joinRoom');
   const scene = runtime.manager.current;
-  scene.pasteRoomId();
   await flush();
 
   assert(scene.roomId === '654321', 'join scene must extract a six-digit room id from clipboard text');
-  assert(scene.feedback.includes('已粘贴'), 'join scene must show paste success feedback');
-  assert(toasts.some(toast => toast.title === '房间号已粘贴'), 'join scene must show a paste success toast');
-  assert(!scene.pasting, 'paste button must unlock after success');
+  assert(scene.feedback.includes('剪贴板识别'), 'join scene must show automatic clipboard success feedback');
+  assert(!scene.checkingClipboard, 'automatic clipboard check must settle after success');
 }
 
 async function verifyInvalidClipboardFeedback() {
   const { wx, runtime } = createStartedRuntime();
-  const toasts = [];
   wx.getClipboardData = options => {
     options.success({ data: '这里没有房间号 1234567' });
-  };
-  wx.showToast = options => {
-    toasts.push(options);
   };
 
   runtime.manager.go('joinRoom');
   const scene = runtime.manager.current;
-  scene.pasteRoomId();
   await flush();
 
   assert(scene.roomId === '', 'invalid clipboard text must not fill the room id');
-  assert(scene.error.includes('没有有效的 6 位房间号'), 'invalid clipboard text must show a clear error');
-  assert(toasts.some(toast => toast.title === '房间号无效'), 'invalid clipboard text must show an error toast');
-  assert(!scene.pasting, 'paste button must unlock after invalid clipboard text');
+  assert(scene.error === '', 'automatic clipboard detection must not show a blocking error');
+  assert(scene.feedback.includes('手动输入'), 'invalid clipboard content must fall back to manual input guidance');
+  assert(!scene.checkingClipboard, 'automatic clipboard check must settle after invalid content');
+}
+
+function verifySharedRoomLaunch() {
+  const wx = createWxMock();
+  wx.launchOptions = { query: { roomId: '246810' } };
+  const runtime = createRuntime(wx);
+  runtime.start();
+
+  assert(runtime.manager.current.constructor.name === 'JoinRoomScene', 'shared launch must open JoinRoomScene');
+  assert(runtime.manager.current.roomId === '246810', 'shared launch must prefill the room id');
+  assert(runtime.manager.current.feedback.includes('好友邀请'), 'shared launch must explain the prefilled source');
+}
+
+function verifyHotSharedRoomEntry() {
+  const { wx, runtime } = createStartedRuntime();
+  wx.showHandler({ query: { roomId: '135790' } });
+
+  assert(runtime.manager.current.constructor.name === 'JoinRoomScene', 'hot shared entry must open JoinRoomScene');
+  assert(runtime.manager.current.roomId === '135790', 'hot shared entry must prefill the room id');
+}
+
+function verifyRoomShare() {
+  const payload = buildRoomSharePayload('123456');
+  assert(payload.query === 'roomId=123456', 'share payload must carry the room id query');
+  assert(payload.title.includes('你棋没我硬'), 'share payload must use the official game brand');
+
+  const wx = createWxMock();
+  const scene = new WaitRoomScene({
+    wx,
+    manager: {
+      render() {},
+    },
+  }, {
+    roomId: '123456',
+    role: 'host',
+    color: 'black',
+  });
+  scene.inviteFriend();
+
+  assert(wx.lastSharePayload.query === 'roomId=123456', 'wait scene must share the active room id');
+  assert(scene.copyMessage.includes('好友列表'), 'wait scene must show invite guidance');
+}
+
+function verifyTouchLayouts() {
+  const width = 375;
+  const height = 667;
+  const ctx = createContextMock();
+  const scenes = [
+    new HomeScene(createLayoutRuntime(width, height)),
+    new JoinRoomScene(createLayoutRuntime(width, height), {}),
+    new LocalGameScene(createLayoutRuntime(width, height)),
+    new CreateRoomScene(createLayoutRuntime(width, height)),
+    new WaitRoomScene(createLayoutRuntime(width, height), {
+      roomId: '123456',
+      role: 'host',
+      color: 'black',
+    }),
+    new OnlineGameScene(createLayoutRuntime(width, height), {
+      roomId: '123456',
+      role: 'host',
+      color: 'black',
+    }),
+  ];
+
+  scenes[3].roomId = '123456';
+  scenes[5].statusText = '轮到你落子（黑棋）';
+  scenes[5].isMyTurn = true;
+  scenes[5].boardLocked = false;
+
+  scenes.forEach(scene => {
+    const input = new InputManager();
+    scene.render(ctx, input);
+    assert(input.hitAreas.length > 0, `${scene.constructor.name} must expose touch targets`);
+    input.hitAreas.forEach(({ rect }) => {
+      assert(rect.x >= 0 && rect.y >= 0, `${scene.constructor.name} touch target must start on screen`);
+      assert(rect.x + rect.width <= width, `${scene.constructor.name} touch target must fit screen width`);
+      assert(rect.y + rect.height <= height, `${scene.constructor.name} touch target must fit screen height`);
+      assert(rect.height >= 38, `${scene.constructor.name} touch target must remain finger friendly`);
+    });
+  });
+}
+
+function createLayoutRuntime(width, height) {
+  return {
+    width,
+    height,
+    wx: createWxMock(),
+    cloud: {},
+    manager: {
+      go() {},
+      render() {},
+    },
+  };
 }
 
 async function verifyStaleJoinCannotChangeScene() {
@@ -262,6 +355,10 @@ async function main() {
   verifyJoinKeypad();
   await verifyJoinClipboardPaste();
   await verifyInvalidClipboardFeedback();
+  verifySharedRoomLaunch();
+  verifyHotSharedRoomEntry();
+  verifyRoomShare();
+  verifyTouchLayouts();
   await verifyStaleJoinCannotChangeScene();
   verifyHostReturnsToWaitingWhenGuestLeaves();
   await verifyCopyFeedback(CreateRoomScene, {}, 'create room scene');

@@ -1,4 +1,5 @@
 const board = require('../../utils/board');
+const { COLORS } = require('../design/theme');
 
 function getBoardRect(width, top) {
   const size = Math.min(width - 32, 420);
@@ -20,8 +21,15 @@ function drawBoard(ctx, boardState, lastMove, rect) {
   const { padding, cellSize } = getConfig(rect);
 
   ctx.save();
-  ctx.fillStyle = '#e8c77d';
+  ctx.shadowColor = 'rgba(31, 43, 39, 0.16)';
+  ctx.shadowBlur = 14;
+  ctx.shadowOffsetY = 5;
+  ctx.fillStyle = '#E7C77F';
   ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+  ctx.shadowColor = 'transparent';
+  ctx.strokeStyle = COLORS.gold;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
 
   ctx.strokeStyle = '#8b7355';
   ctx.lineWidth = 1;

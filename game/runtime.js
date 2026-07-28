@@ -6,6 +6,7 @@ const CreateRoomScene = require('./scenes/createRoomScene');
 const JoinRoomScene = require('./scenes/joinRoomScene');
 const WaitRoomScene = require('./scenes/waitRoomScene');
 const OnlineGameScene = require('./scenes/onlineGameScene');
+const { getSharedRoomId } = require('../utils/share');
 
 const CLOUD_ENV = 'cloud1-d3glf789q33b91507';
 
@@ -57,10 +58,30 @@ function createRuntime(wxApi) {
     }
 
     if (wxApi.onShow) {
-      wxApi.onShow(() => manager.resume());
+      wxApi.onShow(options => {
+        const roomId = getSharedRoomId(options);
+        if (roomId) {
+          manager.go('joinRoom', { roomId, source: 'share' });
+          return;
+        }
+        manager.resume();
+      });
     }
 
-    manager.go('home');
+    let launchOptions = {};
+    if (typeof wxApi.getLaunchOptionsSync === 'function') {
+      try {
+        launchOptions = wxApi.getLaunchOptionsSync() || {};
+      } catch (err) {
+        launchOptions = {};
+      }
+    }
+    const sharedRoomId = getSharedRoomId(launchOptions);
+    if (sharedRoomId) {
+      manager.go('joinRoom', { roomId: sharedRoomId, source: 'share' });
+    } else {
+      manager.go('home');
+    }
   }
 
   return {

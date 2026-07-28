@@ -1,6 +1,9 @@
 const { drawButton } = require('../renderers/buttonRenderer');
 const { drawTitle, drawSubtitle, drawLabel } = require('../renderers/textRenderer');
+const { drawPill, drawRoomCodeCard } = require('../renderers/cardRenderer');
+const { COLORS } = require('../design/theme');
 const { copyText, showToast } = require('../../utils/clipboard');
+const { shareRoom } = require('../../utils/share');
 
 class WaitRoomScene {
   constructor(runtime, params) {
@@ -132,47 +135,86 @@ class WaitRoomScene {
       });
   }
 
+  inviteFriend() {
+    try {
+      shareRoom(this.runtime.wx, this.roomId);
+      this.copyMessage = '已打开好友列表，选择好友即可发送';
+      showToast(this.runtime.wx, '请选择好友发送邀请');
+    } catch (err) {
+      this.copyMessage = '暂时无法唤起分享，可复制房间号邀请';
+      showToast(this.runtime.wx, '暂时无法直接邀请');
+    }
+    this.runtime.manager.render();
+  }
+
   render(ctx, input) {
     const { width } = this.runtime;
     const buttonWidth = Math.min(width - 64, 280);
     const x = (width - buttonWidth) / 2;
 
-    drawTitle(ctx, '等待对手', width / 2, 86);
-    drawSubtitle(ctx, '让另一台手机输入房间号', width / 2, 126);
+    drawTitle(ctx, '好友房已开启', width / 2, 58);
+    drawSubtitle(ctx, '把邀请发给好友，棋局即将开始', width / 2, 92);
+    drawPill(ctx, {
+      x: width / 2 - 67,
+      y: 112,
+      width: 134,
+      text: '等待好友加入',
+      fill: COLORS.goldSoft,
+      color: '#79551D',
+    });
+    drawRoomCodeCard(ctx, {
+      x: 32,
+      y: 154,
+      width: width - 64,
+      roomId: this.roomId,
+    });
 
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(40, 166, width - 80, 112);
-    ctx.fillStyle = '#22342d';
-    ctx.font = 'bold 42px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(this.roomId || '------', width / 2, 222);
-
-    drawLabel(ctx, this.role === 'host' ? '你执黑，先手' : '你执白，后手', width / 2, 314, 'center');
+    drawLabel(
+      ctx,
+      this.role === 'host' ? '你的棋子：黑棋 · 先手' : '你的棋子：白棋 · 后手',
+      width / 2,
+      304,
+      'center',
+      { bold: true, size: 14 },
+    );
     if (this.error || this.copyMessage) {
-      drawLabel(ctx, this.error || this.copyMessage, width / 2, 350, 'center');
+      drawLabel(ctx, this.error || this.copyMessage, width / 2, 334, 'center', {
+        size: 13,
+        color: this.error ? COLORS.danger : COLORS.inkMuted,
+      });
     }
 
     drawButton(ctx, input, {
       x,
-      y: 386,
+      y: 366,
+      width: buttonWidth,
+      height: 50,
+      text: '邀请微信好友',
+      onTap: () => this.inviteFriend(),
+    });
+
+    drawButton(ctx, input, {
+      x,
+      y: 430,
       width: buttonWidth,
       height: 50,
       text: this.copying ? '正在复制...' : '复制房间号',
       disabled: this.copying,
-      fill: '#295f92',
+      variant: 'secondary',
       onTap: () => this.copyRoomId(),
     });
 
     drawButton(ctx, input, {
       x,
-      y: 452,
+      y: 494,
       width: buttonWidth,
       height: 50,
       text: '离开房间',
-      fill: '#777777',
+      variant: 'danger',
       onTap: () => this.leave(),
     });
+
+    drawSubtitle(ctx, '好友从分享卡片进入时，房间号会自动填写', width / 2, 580);
   }
 }
 
