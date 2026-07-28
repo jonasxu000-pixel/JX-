@@ -7,6 +7,10 @@
         "type": "folder"
       },
       {
+        "value": "cloudfunctions",
+        "type": "folder"
+      },
+      {
         "value": "pages",
         "type": "folder"
       },
@@ -70,7 +74,7 @@
   "compileType": "game",
   "libVersion": "3.16.1",
   "appid": "wx08c6484b52864efa",
-  "projectname": "JX双人五子棋",
+  "projectname": "你棋没我硬",
   "editorSetting": {
     "tabIndent": "insertSpaces",
     "tabSize": 2
@@ -78,5 +82,6 @@
   "condition": {},
   "simulatorPluginLibVersion": {},
   "cloudfunctionRoot": "cloudfunctions/",
-  "isGameTourist": false
+  "isGameTourist": false,
+  "cloudfunctionTemplateRoot": "cloudfunctionTemplate/"
 }

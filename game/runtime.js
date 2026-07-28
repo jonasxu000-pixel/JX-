@@ -7,7 +7,7 @@ const JoinRoomScene = require('./scenes/joinRoomScene');
 const WaitRoomScene = require('./scenes/waitRoomScene');
 const OnlineGameScene = require('./scenes/onlineGameScene');
 
-const CLOUD_ENV = 'cloud1-d8g33m3x28826d0ab';
+const CLOUD_ENV = 'cloud1-d3glf789q33b91507';
 
 function getSystemInfo(wxApi) {
   if (wxApi.getSystemInfoSync) return wxApi.getSystemInfoSync();

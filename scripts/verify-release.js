@@ -42,6 +42,7 @@ function verifySourceGuards() {
   assert(projectConfig.setting.minified === true, 'release build must enable JavaScript minification');
   assert(ignored.includes('folder:pages'), 'release package must exclude Mini Program pages');
   assert(ignored.includes('folder:components'), 'release package must exclude Mini Program components');
+  assert(ignored.includes('folder:cloudfunctions'), 'release package must exclude cloud function source');
   assert(ignored.includes('file:app.json'), 'release package must exclude the Mini Program manifest');
   assert(ignored.includes('folder:.codex-preview'), 'release package must exclude local preview artifacts');
 

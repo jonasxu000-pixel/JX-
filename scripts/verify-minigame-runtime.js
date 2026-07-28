@@ -1,5 +1,6 @@
 const { createRuntime, CLOUD_ENV } = require('../game/runtime');
 const board = require('../utils/board');
+const OnlineGameScene = require('../game/scenes/onlineGameScene');
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -114,11 +115,41 @@ async function verifyStaleJoinCannotChangeScene() {
   assert(runtime.manager.current.constructor.name === 'HomeScene', 'stale join response must not leave HomeScene');
 }
 
+function verifyHostReturnsToWaitingWhenGuestLeaves() {
+  const transitions = [];
+  const runtime = {
+    manager: {
+      go(name, params) {
+        transitions.push({ name, params });
+      },
+      render() {},
+    },
+  };
+  const scene = new OnlineGameScene(runtime, {
+    roomId: '123456',
+    role: 'host',
+    color: 'black',
+  });
+
+  scene.active = true;
+  scene.applyRoom({
+    status: 'waiting',
+    currentTurn: 'host',
+    board: board.createBoard(),
+  });
+
+  assert(transitions.length === 1, 'guest departure must trigger one scene transition');
+  assert(transitions[0].name === 'waitRoom', 'host must return to WaitRoomScene after guest departure');
+  assert(transitions[0].params.roomId === '123456', 'host must keep the existing room id');
+  assert(transitions[0].params.role === 'host', 'host role must be preserved while waiting');
+}
+
 async function main() {
   verifyRuntimeBoot();
   verifyLocalBoardTap();
   verifyJoinKeypad();
   await verifyStaleJoinCannotChangeScene();
+  verifyHostReturnsToWaitingWhenGuestLeaves();
   console.log('mini game runtime checks ok');
 }
 

@@ -76,6 +76,16 @@ class OnlineGameScene {
 
   applyRoom(roomData) {
     if (!this.active) return;
+
+    if (roomData && roomData.status === 'waiting' && this.role === 'host') {
+      this.runtime.manager.go('waitRoom', {
+        roomId: this.roomId,
+        role: this.role,
+        color: this.color,
+      });
+      return;
+    }
+
     const viewState = onlineGameState.deriveOnlineGameState(roomData, this.role);
     this.currentPlayer = viewState.currentPlayer;
     this.statusText = viewState.statusText;
