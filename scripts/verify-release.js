@@ -25,6 +25,7 @@ function verifySourceGuards() {
   const runtimeSource = read('game/runtime.js');
   const joinSource = read('game/scenes/joinRoomScene.js');
   const shareSource = read('utils/share.js');
+  const roomServiceSource = read('services/roomService.js');
   const playerSessionSource = read('utils/playerSession.js');
   const profileSource = read('game/scenes/profileScene.js');
   const homeSource = read('game/scenes/homeScene.js');
@@ -47,8 +48,12 @@ function verifySourceGuards() {
   assert(runtimeSource.includes('getSharedRoomId'), 'runtime must accept room ids from share entry parameters');
   assert(shareSource.includes('wxApi.shareAppMessage'), 'room sharing must use the Mini Game share API');
   assert(shareSource.includes('query: `roomId='), 'room sharing must include a deep-link room id');
+  assert(roomServiceSource.includes('playerProfile'),
+    'create and join room calls must publish the player display profile');
   assert(runtimeSource.includes("manager.register('home'"), 'runtime must register the authenticated home scene');
   assert(playerSessionSource.includes('gomoku_player_session_v1'), 'WeChat login must persist a local player session');
+  assert(playerSessionSource.includes('getPublicPlayerProfile'),
+    'room creation must publish a safe player display profile');
   assert(profileSource.includes('createUserInfoButton'), 'profile must use the official user-authorized WeChat info button');
   assert(profileSource.includes('requirePrivacyAuthorize'), 'profile must prepare official privacy authorization');
   assert(profileSource.includes('chooseMedia'), 'profile must use the maintained media picker for album avatars');
@@ -59,6 +64,8 @@ function verifySourceGuards() {
   assert(onlineSource.includes('placePiece'), 'online scene must use the cloud move action');
   assert(onlineSource.includes('restartRoom'), 'online scene must support another round');
   assert(onlineSource.includes('confirmSurrender'), 'online scene must confirm surrender before ending a round');
+  assert(onlineSource.includes('renderPlayerCards'), 'online scene must render both versus player cards');
+  assert(onlineSource.includes("'⚑ 投降'"), 'surrender control must have a visible Chinese label');
   assert(homeSource.includes('getContentTop'), 'home scene must respect the WeChat capsule safe area');
   assert(profileSource.includes('getContentTop'), 'profile scene must respect the WeChat capsule safe area');
   assert(onlineSource.includes('getContentTop'), 'online scene must respect the WeChat capsule safe area');
@@ -67,6 +74,8 @@ function verifySourceGuards() {
   assert(gameConfig.officialPrivacyAuthorizationShowingGap === 10,
     'official privacy authorization retry interval must be configured');
   assert(cloudSource.includes('surrenderRoomForOpenId'), 'surrender must be adjudicated by the cloud action');
+  assert(cloudSource.includes('sanitizePlayerProfile'),
+    'cloud room profiles must sanitize nicknames and avatar URLs');
   assert(cloudSource.includes('ENABLE_ROOM_DIAGNOSTICS'), 'cloud diagnostics must be release-gated');
   assert(cloudSource.includes('isBoardFull(nextBoard)'), 'cloud action must finish full-board draws');
   assert(permissionDoc.includes('"write": false'), 'database permission guide must disable client writes');

@@ -1,8 +1,8 @@
 const board = require('../../utils/board');
 const { COLORS } = require('../design/theme');
 
-function getBoardRect(width, top) {
-  const size = Math.min(width - 32, 420);
+function getBoardRect(width, top, maxSize = 420) {
+  const size = Math.min(width - 32, 420, Math.max(220, maxSize));
   return {
     x: (width - size) / 2,
     y: top,

@@ -13,7 +13,7 @@ const BOARD_SIZE = 15;
 const EMPTY = 0;
 const BLACK = 1;
 const WHITE = 2;
-const ROOM_ACTION_VERSION = 'roomAction-20260728-surrender-profile-ui-4';
+const ROOM_ACTION_VERSION = 'roomAction-20260728-versus-profile-ui-5';
 const DIAGNOSTIC_ACTIONS = new Set([
   'selfTestMove',
   'selfTestMatch',
@@ -30,6 +30,22 @@ function createRestartReady() {
   return {
     host: false,
     guest: false,
+  };
+}
+
+function sanitizePlayerProfile(profile) {
+  const source = profile && typeof profile === 'object' ? profile : {};
+  const nickname = String(source.nickname || '')
+    .replace(/[\u0000-\u001f\u007f]/g, '')
+    .trim()
+    .slice(0, 12) || '棋友';
+  const rawAvatarUrl = String(source.avatarUrl || '').trim();
+  const avatarUrl = /^https:\/\//i.test(rawAvatarUrl)
+    ? rawAvatarUrl.slice(0, 1024)
+    : '';
+  return {
+    nickname,
+    avatarUrl,
   };
 }
 
@@ -144,7 +160,7 @@ async function runTransactionWithRetry(updateFunction, maxAttempts = 3) {
   throw lastError;
 }
 
-async function joinRoomForOpenId(targetRoomId, openId) {
+async function joinRoomForOpenId(targetRoomId, openId, playerProfile) {
   if (!targetRoomId) {
     return { success: false, error: '房间号不能为空' };
   }
@@ -171,6 +187,7 @@ async function joinRoomForOpenId(targetRoomId, openId) {
         guest: _.set({
           openId,
           color: 'white',
+          ...sanitizePlayerProfile(playerProfile),
         }),
         status: 'playing',
         restartReady: _.set(createRestartReady()),
@@ -432,7 +449,13 @@ async function leaveRoomForOpenId(targetRoomId, openId) {
 }
 
 exports.main = async (event = {}) => {
-  const { action, roomId, row, col } = event;
+  const {
+    action,
+    roomId,
+    row,
+    col,
+    playerProfile,
+  } = event;
   const wxContext = cloud.getWXContext();
   const callerOpenId = wxContext.OPENID;
 
@@ -461,6 +484,7 @@ exports.main = async (event = {}) => {
             host: {
               openId: callerOpenId,
               color: 'black',
+              ...sanitizePlayerProfile(playerProfile),
             },
             guest: null,
             currentTurn: 'host',
@@ -839,7 +863,7 @@ exports.main = async (event = {}) => {
       }
 
       case 'joinRoom':
-        return joinRoomForOpenId(roomId, callerOpenId);
+        return joinRoomForOpenId(roomId, callerOpenId, playerProfile);
 
       case 'placePiece':
         return placePieceForOpenId(roomId, row, col, callerOpenId);

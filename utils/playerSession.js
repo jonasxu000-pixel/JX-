@@ -46,6 +46,18 @@ function normalizeWechatUserInfo(userInfo = {}) {
   };
 }
 
+function getPublicPlayerProfile(player) {
+  const source = player || {};
+  const wechatAvatarUrl = String(source.wechatAvatarUrl || '').trim();
+  const avatarUrl = source.avatarMode === 'wechat' && /^https:\/\//i.test(wechatAvatarUrl)
+    ? wechatAvatarUrl.slice(0, 1024)
+    : '';
+  return {
+    nickname: sanitizeNickname(source.nickname),
+    avatarUrl,
+  };
+}
+
 function savePlayer(wxApi, openId, userInfo = {}, currentPlayer = null) {
   const wechatProfile = normalizeWechatUserInfo(userInfo);
   const hasCustomProfile = Boolean(currentPlayer && currentPlayer.profileCompleted);
@@ -93,6 +105,7 @@ function updatePlayer(wxApi, currentPlayer, changes) {
 module.exports = {
   STORAGE_KEY,
   DEFAULT_NICKNAME,
+  getPublicPlayerProfile,
   getStoredPlayer,
   normalizeWechatUserInfo,
   savePlayer,

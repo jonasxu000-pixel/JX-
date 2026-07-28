@@ -9,17 +9,17 @@ function assertCloudResult(res, fallbackMessage) {
   return res.result;
 }
 
-function createRoom() {
+function createRoom(playerProfile) {
   return wx.cloud.callFunction({
     name: 'roomAction',
-    data: { action: 'createRoom' },
+    data: { action: 'createRoom', playerProfile },
   }).then(res => assertCloudResult(res, '创建失败').roomId);
 }
 
-function joinRoom(roomId) {
+function joinRoom(roomId, playerProfile) {
   return wx.cloud.callFunction({
     name: 'roomAction',
-    data: { action: 'joinRoom', roomId },
+    data: { action: 'joinRoom', roomId, playerProfile },
   }).then(res => {
     const result = assertCloudResult(res, '加入失败');
     return {

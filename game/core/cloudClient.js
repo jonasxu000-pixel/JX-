@@ -1,4 +1,5 @@
 const roomService = require('../../services/roomService');
+const { getPublicPlayerProfile, getStoredPlayer } = require('../../utils/playerSession');
 
 class CloudClient {
   constructor(wxApi) {
@@ -34,11 +35,11 @@ class CloudClient {
   }
 
   createRoom() {
-    return roomService.createRoom();
+    return roomService.createRoom(this.getPlayerProfile());
   }
 
   joinRoom(roomId) {
-    return roomService.joinRoom(roomId);
+    return roomService.joinRoom(roomId, this.getPlayerProfile());
   }
 
   getRoom(roomId) {
@@ -63,6 +64,10 @@ class CloudClient {
 
   leaveRoom(roomId) {
     return roomService.leaveRoom(roomId);
+  }
+
+  getPlayerProfile() {
+    return getPublicPlayerProfile(getStoredPlayer(this.wx));
   }
 }
 

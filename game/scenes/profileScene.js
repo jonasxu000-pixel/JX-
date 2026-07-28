@@ -39,42 +39,37 @@ class ProfileScene {
     const { width, manager } = this.runtime;
     const layout = this.getLayout();
     drawTitle(ctx, '玩家资料', width / 2, layout.titleY);
-    drawSubtitle(ctx, '连接微信身份后，可授权同步或自定义游戏资料', width / 2, layout.subtitleY);
+    drawSubtitle(ctx, '设置你在好友对局中展示的头像和昵称', width / 2, layout.subtitleY);
 
     drawCard(ctx, {
       x: 28,
       y: layout.cardY,
       width: width - 56,
-      height: 132,
+      height: 146,
     });
-    drawAvatar(ctx, this.runtime.wx, this.player, width / 2 - 34, layout.cardY + 12, 68, () => manager.render());
-    drawLabel(ctx, this.player ? this.player.nickname : '棋友', width / 2, layout.cardY + 98, 'center', {
+    drawAvatar(ctx, this.runtime.wx, this.player, 48, layout.cardY + 31, 76, () => manager.render());
+    drawLabel(ctx, formatProfileNickname(this.player && this.player.nickname), 144, layout.cardY + 43, 'left', {
       bold: true,
       size: 18,
     });
-    drawLabel(ctx, this.player ? '微信身份已连接' : '尚未连接微信身份', width / 2, layout.cardY + 120, 'center', {
-      size: 11,
+    drawPill(ctx, {
+      x: 144,
+      y: layout.cardY + 58,
+      width: 92,
+      height: 26,
+      text: this.player ? '微信已连接' : '尚未连接',
+      fill: this.player ? COLORS.jadeSoft : '#F5E4DF',
       color: this.player ? COLORS.jade : COLORS.danger,
     });
-
-    drawPill(ctx, {
-      x: width / 2 - 62,
-      y: layout.pillY,
-      width: 124,
-      text: this.getAvatarSourceText(),
-      fill: COLORS.jadeSoft,
-      color: COLORS.jade,
+    drawLabel(ctx, '好友对局中将展示此头像和昵称', 144, layout.cardY + 112, 'left', {
+      size: 11,
+      color: COLORS.inkMuted,
     });
 
-    drawButton(ctx, input, {
-      x: 36,
-      y: layout.albumY,
-      width: width - 72,
-      height: 50,
-      text: this.savingAvatar ? '正在保存头像…' : '从相册选择头像',
-      variant: 'secondary',
-      disabled: this.savingAvatar,
-      onTap: () => this.chooseCustomAvatar(),
+    drawLabel(ctx, '资料设置', 36, layout.sectionTitleY, 'left', {
+      bold: true,
+      size: 14,
+      color: COLORS.ink,
     });
 
     if (!this.userInfoButton) {
@@ -83,20 +78,31 @@ class ProfileScene {
         y: layout.syncY,
         width: width - 72,
         height: 50,
-        text: this.privacyPreparing ? '正在准备微信授权…' : '重新申请微信资料授权',
+        text: this.privacyPreparing ? '正在准备微信授权…' : '同步微信头像昵称',
         variant: 'gold',
         disabled: this.privacyPreparing,
         onTap: () => this.preparePrivacyAuthorization(true),
       });
     }
 
+    const quickWidth = (width - 84) / 2;
     drawButton(ctx, input, {
       x: 36,
-      y: layout.nicknameY,
-      width: width - 72,
+      y: layout.quickActionY,
+      width: quickWidth,
       height: 50,
-      text: '修改游戏昵称',
-      variant: 'ghost',
+      text: this.savingAvatar ? '正在保存…' : '从相册选择',
+      variant: 'secondary',
+      disabled: this.savingAvatar,
+      onTap: () => this.chooseCustomAvatar(),
+    });
+    drawButton(ctx, input, {
+      x: 48 + quickWidth,
+      y: layout.quickActionY,
+      width: quickWidth,
+      height: 50,
+      text: '修改昵称',
+      variant: 'secondary',
       onTap: () => this.editNickname(),
     });
     drawButton(ctx, input, {
@@ -104,7 +110,7 @@ class ProfileScene {
       y: layout.defaultAvatarY,
       width: width - 72,
       height: 44,
-      text: '恢复系统默认头像',
+      text: '使用系统默认头像',
       variant: 'ghost',
       onTap: () => this.useDefaultAvatar(),
     });
@@ -116,7 +122,7 @@ class ProfileScene {
       text: '保存并返回首页',
       onTap: () => manager.go('home'),
     });
-    drawSubtitle(ctx, '头像和昵称只用于游戏内展示，不会静默读取', width / 2, layout.footerY);
+    drawSubtitle(ctx, '头像昵称可随时修改，仅用于游戏内展示', width / 2, layout.footerY);
   }
 
   getLayout() {
@@ -124,22 +130,14 @@ class ProfileScene {
     return {
       titleY: safeTop + 22,
       subtitleY: safeTop + 48,
-      cardY: safeTop + 68,
-      pillY: safeTop + 212,
-      syncY: safeTop + 254,
-      albumY: safeTop + 314,
-      nicknameY: safeTop + 374,
-      defaultAvatarY: safeTop + 434,
-      saveY: safeTop + 488,
-      footerY: safeTop + 554,
+      cardY: safeTop + 70,
+      sectionTitleY: safeTop + 242,
+      syncY: safeTop + 262,
+      quickActionY: safeTop + 326,
+      defaultAvatarY: safeTop + 390,
+      saveY: safeTop + 448,
+      footerY: safeTop + 516,
     };
-  }
-
-  getAvatarSourceText() {
-    if (!this.player) return '系统默认头像';
-    if (this.player.avatarMode === 'wechat') return '当前：微信头像';
-    if (this.player.avatarMode === 'custom') return '当前：相册头像';
-    return '当前：系统默认头像';
   }
 
   createWeChatProfileButton() {
@@ -400,6 +398,11 @@ class ProfileScene {
     }
     this.keyboardHandler = null;
   }
+}
+
+function formatProfileNickname(nickname) {
+  const name = String(nickname || '棋友').trim();
+  return name.length > 9 ? `${name.slice(0, 9)}…` : name;
 }
 
 module.exports = ProfileScene;

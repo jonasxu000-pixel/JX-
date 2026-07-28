@@ -20,7 +20,9 @@ function flush() {
 
 function createContextMock() {
   const noop = () => {};
+  const texts = [];
   return {
+    texts,
     save: noop,
     restore: noop,
     scale: noop,
@@ -36,7 +38,9 @@ function createContextMock() {
     arc: noop,
     clip: noop,
     drawImage: noop,
-    fillText: noop,
+    fillText(value) {
+      texts.push(String(value));
+    },
     createRadialGradient() {
       return { addColorStop: noop };
     },
@@ -181,6 +185,8 @@ async function verifyWeChatLogin() {
   assert(scene.player && scene.player.openId === 'test-wechat-openid', 'WeChat login must save the cloud OpenID');
   assert(scene.player.nickname === '棋友小徐', 'WeChat login must use the authorized nickname by default');
   assert(scene.player.wechatAvatarUrl.includes('avatar.png'), 'WeChat login must save the authorized avatar');
+  assert(runtime.manager.runtime.cloud.getPlayerProfile().avatarUrl.includes('avatar.png'),
+    'room profile must expose an authorized WeChat avatar');
   assert(wx.lastUserInfoButton.destroyed, 'native login button must be destroyed after login');
   assert(wx.cloud.callFunctionCalls.some(call => call.name === 'login'), 'WeChat login must call the login cloud function');
 
@@ -199,6 +205,8 @@ async function verifyWeChatLogin() {
   profileScene.chooseCustomAvatar();
   assert(profileScene.player.avatarMode === 'custom', 'player must be able to choose an album avatar');
   assert(profileScene.player.customAvatarPath.includes('saved/avatar.jpg'), 'album avatar must be persisted locally');
+  assert(runtime.manager.runtime.cloud.getPlayerProfile().avatarUrl === '',
+    'device-local album avatars must not be sent as unusable room URLs');
 
   runtime.manager.go('home');
   assert(runtime.manager.current.player.nickname === '自定义棋手', 'custom profile must persist on the home scene');
@@ -236,6 +244,61 @@ function verifyPrivacyAuthorizationFailure() {
   assert(!scene.userInfoButton, 'native user-info button must wait for privacy authorization');
   assert(wx.lastModal && wx.lastModal.title === '需要隐私授权',
     'privacy refusal must show a clear recovery message');
+}
+
+function verifyOnlinePlayerProfiles() {
+  const wx = createWxMock();
+  wx.setStorageSync('gomoku_player_session_v1', {
+    openId: 'guest-openid',
+    nickname: '本机白棋',
+    avatarMode: 'wechat',
+    wechatAvatarUrl: 'https://example.com/local-guest.png',
+    profileCompleted: true,
+  });
+  const runtime = {
+    wx,
+    width: 375,
+    height: 667,
+    cloud: {},
+    manager: {
+      go() {},
+      render() {},
+    },
+  };
+  const scene = new OnlineGameScene(runtime, {
+    roomId: '123456',
+    role: 'guest',
+    color: 'white',
+  });
+  scene.active = true;
+  scene.applyRoom({
+    _id: '123456',
+    host: {
+      openId: 'host-openid',
+      color: 'black',
+      nickname: '远程黑棋',
+      avatarUrl: 'https://example.com/remote-host.png',
+    },
+    guest: {
+      openId: 'guest-openid',
+      color: 'white',
+      nickname: '云端白棋',
+      avatarUrl: 'https://example.com/remote-guest.png',
+    },
+    status: 'playing',
+    currentTurn: 'host',
+    winner: null,
+    board: board.createBoard(),
+  });
+
+  const ctx = createContextMock();
+  const input = new InputManager();
+  scene.render(ctx, input);
+  assert(scene.hostPlayer.nickname === '远程黑棋', 'opponent nickname must come from the room profile');
+  assert(scene.guestPlayer.nickname === '本机白棋', 'own player card must use the latest local profile');
+  assert(ctx.texts.includes('远程黑棋'), 'versus header must render the opponent nickname');
+  assert(ctx.texts.includes('本机白棋'), 'versus header must render the local nickname');
+  assert(ctx.texts.includes('⚑ 投降'), 'surrender action must include a visible text label');
 }
 
 async function verifySurrenderConfirmation() {
@@ -617,6 +680,7 @@ async function main() {
   await verifyWeChatLogin();
   await verifyIncompleteProfileIsNotMarkedComplete();
   verifyPrivacyAuthorizationFailure();
+  verifyOnlinePlayerProfiles();
   await verifySurrenderConfirmation();
   verifyLocalBoardTap();
   verifyJoinKeypad();

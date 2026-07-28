@@ -145,17 +145,52 @@ async function expectFail(roomAction, openId, event, label) {
 }
 
 async function createPlayingRoom(roomAction) {
-  const created = await call(roomAction, 'host-openid', { action: 'createRoom' });
+  const created = await call(roomAction, 'host-openid', {
+    action: 'createRoom',
+    playerProfile: {
+      nickname: '黑棋小徐',
+      avatarUrl: 'https://example.com/host-avatar.png',
+    },
+  });
   const roomId = created.roomId;
   assert(roomId, 'createRoom should return roomId');
   assert(/^\d{6}$/.test(roomId), 'roomId should be a 6 digit code');
   assert(created.role === 'host', 'createRoom should return host role');
   assert(created.color === 'black', 'createRoom should return black color');
 
-  const joined = await call(roomAction, 'guest-openid', { action: 'joinRoom', roomId });
+  const joined = await call(roomAction, 'guest-openid', {
+    action: 'joinRoom',
+    roomId,
+    playerProfile: {
+      nickname: '白棋好友',
+      avatarUrl: 'https://example.com/guest-avatar.png',
+    },
+  });
   assert(joined.role === 'guest', 'joinRoom should return guest role');
   assert(joined.color === 'white', 'joinRoom should return white color');
+  const room = rooms.get(roomId);
+  assert(room.host.nickname === '黑棋小徐', 'room must store the host display nickname');
+  assert(room.host.avatarUrl.includes('host-avatar.png'), 'room must store the host display avatar');
+  assert(room.guest.nickname === '白棋好友', 'room must store the guest display nickname');
+  assert(room.guest.avatarUrl.includes('guest-avatar.png'), 'room must store the guest display avatar');
   return roomId;
+}
+
+async function verifyPlayerProfileSanitization(roomAction) {
+  const created = await call(roomAction, 'profile-host-openid', {
+    action: 'createRoom',
+    playerProfile: {
+      nickname: '  超长昵称一二三四五六七八九十  ',
+      avatarUrl: 'javascript:alert(1)',
+    },
+  });
+  const room = rooms.get(created.roomId);
+  assert(room.host.nickname.length <= 12, 'cloud profile nickname must be length limited');
+  assert(room.host.avatarUrl === '', 'cloud profile avatar must only accept HTTPS URLs');
+  await call(roomAction, 'profile-host-openid', {
+    action: 'leaveRoom',
+    roomId: created.roomId,
+  });
 }
 
 async function verifyHostBlackWin(roomAction) {
@@ -479,7 +514,7 @@ async function verifyDiagnosticsDisabledByDefault(roomAction) {
 async function verifyHealthPing(roomAction) {
   delete process.env.ENABLE_ROOM_DIAGNOSTICS;
   const result = await call(roomAction, 'host-openid', { action: 'ping' });
-  assert(result.version === 'roomAction-20260728-surrender-profile-ui-4', 'health ping should expose deployed version');
+  assert(result.version === 'roomAction-20260728-versus-profile-ui-5', 'health ping should expose deployed version');
 }
 
 async function main() {
@@ -493,6 +528,7 @@ async function main() {
   await verifyConcurrentRestartConsent(roomAction);
   await verifyLeaveLocksOpponent(roomAction);
   await verifySurrender(roomAction);
+  await verifyPlayerProfileSanitization(roomAction);
   await verifyConcurrentMoveIsAtomic(roomAction);
   await verifyTransactionConflictRetries(roomAction);
   await verifyConcurrentJoinIsAtomic(roomAction);

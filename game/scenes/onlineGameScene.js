@@ -4,8 +4,10 @@ const boardRenderer = require('../renderers/boardRenderer');
 const { drawButton } = require('../renderers/buttonRenderer');
 const { drawLabel } = require('../renderers/textRenderer');
 const { drawCard, drawPill } = require('../renderers/cardRenderer');
+const { drawAvatar } = require('../renderers/avatarRenderer');
 const { COLORS } = require('../design/theme');
 const { getContentTop } = require('../../utils/safeArea');
+const { getStoredPlayer } = require('../../utils/playerSession');
 
 class OnlineGameScene {
   constructor(runtime, params) {
@@ -32,6 +34,9 @@ class OnlineGameScene {
     this.restartTimer = null;
     this.boardRect = null;
     this.active = false;
+    this.localPlayer = getStoredPlayer(runtime.wx);
+    this.hostPlayer = createDisplayPlayer(null, '黑棋棋手');
+    this.guestPlayer = createDisplayPlayer(null, '白棋棋手');
   }
 
   onEnter() {
@@ -108,6 +113,8 @@ class OnlineGameScene {
     this.opponentRestartReady = Boolean(restartReady[opponentRole]);
     this.finishReason = roomData && roomData.finishReason;
     this.surrenderedBy = roomData && roomData.surrenderedBy;
+    this.hostPlayer = this.getRoomDisplayPlayer(roomData && roomData.host, 'host');
+    this.guestPlayer = this.getRoomDisplayPlayer(roomData && roomData.guest, 'guest');
 
     if (roomData && Array.isArray(roomData.board)) {
       this.board = normalizeBoard(roomData.board);
@@ -138,33 +145,38 @@ class OnlineGameScene {
   }
 
   render(ctx, input) {
-    const { width } = this.runtime;
+    const { width, height } = this.runtime;
     const safeTop = getContentTop(this.runtime.wx);
-    this.boardRect = boardRenderer.getBoardRect(width, safeTop + 94);
-    const roleText = this.role === 'host' ? '黑棋' : '白棋';
+    const statusY = safeTop + 110;
+    const boardTop = safeTop + 160;
+    const maxBoardSize = height - boardTop - 130;
+    this.boardRect = boardRenderer.getBoardRect(width, boardTop, maxBoardSize);
 
-    drawLabel(ctx, `好友房 ${this.roomId}`, 20, safeTop + 14, 'left', { bold: true, size: 17 });
-    drawPill(ctx, {
-      x: width - 102,
-      y: safeTop,
-      width: 82,
-      text: `你执${roleText}`,
-      fill: this.role === 'host' ? COLORS.goldSoft : COLORS.blueSoft,
-      color: this.role === 'host' ? '#79551D' : COLORS.blue,
+    drawLabel(ctx, `好友房 ${this.roomId}`, width / 2, safeTop + 10, 'center', {
+      bold: true,
+      size: 14,
+      color: COLORS.inkMuted,
     });
-    drawLabel(ctx, this.syncing ? '正在同步棋局…' : this.statusText, width / 2, safeTop + 58, 'center', {
-      bold: this.isMyTurn,
-      color: this.isMyTurn ? COLORS.jade : COLORS.ink,
+    this.renderPlayerCards(ctx, safeTop);
+
+    drawPill(ctx, {
+      x: 16,
+      y: statusY,
+      width: width - 122,
+      height: 38,
+      text: this.syncing ? '正在同步棋局…' : this.statusText,
+      fill: this.isMyTurn ? COLORS.jadeSoft : COLORS.surfaceMuted,
+      color: this.isMyTurn ? COLORS.jade : COLORS.inkMuted,
     });
     if (!this.gameOver) {
       drawButton(ctx, input, {
-        x: width - 66,
-        y: safeTop + 42,
-        width: 46,
+        x: width - 94,
+        y: statusY,
+        width: 78,
         height: 38,
-        text: '⚑',
+        text: '⚑ 投降',
         variant: 'danger',
-        fontSize: 18,
+        fontSize: 14,
         disabled: this.surrenderSubmitting,
         onTap: () => this.confirmSurrender(),
       });
@@ -184,6 +196,77 @@ class OnlineGameScene {
         onTap: () => this.leaveToHome(),
       });
     }
+  }
+
+  getRoomDisplayPlayer(roomPlayer, playerRole) {
+    if (playerRole === this.role && this.localPlayer) return this.localPlayer;
+    return createDisplayPlayer(
+      roomPlayer,
+      playerRole === 'host' ? '黑棋棋手' : '白棋棋手',
+    );
+  }
+
+  renderPlayerCards(ctx, safeTop) {
+    const { width, manager } = this.runtime;
+    const gap = 12;
+    const cardWidth = (width - 44) / 2;
+    const y = safeTop + 26;
+    this.renderPlayerCard(ctx, {
+      x: 16,
+      y,
+      width: cardWidth,
+      player: this.hostPlayer,
+      role: 'host',
+      label: '黑棋 · 先手',
+      manager,
+    });
+    this.renderPlayerCard(ctx, {
+      x: 16 + cardWidth + gap,
+      y,
+      width: cardWidth,
+      player: this.guestPlayer,
+      role: 'guest',
+      label: '白棋 · 后手',
+      manager,
+    });
+  }
+
+  renderPlayerCard(ctx, options) {
+    const {
+      x,
+      y,
+      width,
+      player,
+      role,
+      label,
+      manager,
+    } = options;
+    const isSelf = role === this.role;
+    const isActive = !this.gameOver
+      && ((this.currentPlayer === board.BLACK && role === 'host')
+        || (this.currentPlayer === board.WHITE && role === 'guest'));
+    drawCard(ctx, {
+      x,
+      y,
+      width,
+      height: 72,
+      radius: 16,
+      fill: isActive ? '#EEF7F2' : COLORS.surface,
+      stroke: isActive ? '#9BC7B3' : COLORS.line,
+      shadow: false,
+    });
+    drawAvatar(ctx, this.runtime.wx, player, x + 10, y + 14, 44, () => manager.render());
+    drawLabel(ctx, formatPlayerName(player.nickname), x + 62, y + 25, 'left', {
+      bold: true,
+      size: 14,
+      color: COLORS.ink,
+    });
+    drawPlayerStone(ctx, x + 67, y + 49, role);
+    const selfLabel = role === 'host' ? '黑棋先手 · 我' : '白棋后手 · 我';
+    drawLabel(ctx, isSelf ? selfLabel : label, x + 78, y + 49, 'left', {
+      size: 11,
+      color: isActive ? COLORS.jade : COLORS.inkMuted,
+    });
   }
 
   renderResultActions(ctx, input) {
@@ -380,6 +463,35 @@ function normalizeBoard(nextBoard) {
       return piece === board.BLACK || piece === board.WHITE ? piece : board.EMPTY;
     });
   });
+}
+
+function createDisplayPlayer(roomPlayer, fallbackNickname) {
+  const source = roomPlayer || {};
+  const avatarUrl = /^https:\/\//i.test(String(source.avatarUrl || ''))
+    ? String(source.avatarUrl)
+    : '';
+  return {
+    nickname: String(source.nickname || fallbackNickname || '棋友').trim().slice(0, 12),
+    avatarMode: avatarUrl ? 'wechat' : 'jade',
+    wechatAvatarUrl: avatarUrl,
+  };
+}
+
+function formatPlayerName(nickname) {
+  const name = String(nickname || '棋友').trim();
+  return name.length > 6 ? `${name.slice(0, 6)}…` : name;
+}
+
+function drawPlayerStone(ctx, x, y, role) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x, y, 5, 0, Math.PI * 2);
+  ctx.fillStyle = role === 'host' ? '#1D2321' : '#F8F8F5';
+  ctx.fill();
+  ctx.strokeStyle = role === 'host' ? '#0C0F0E' : '#B8BFBB';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.restore();
 }
 
 module.exports = OnlineGameScene;
