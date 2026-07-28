@@ -3,8 +3,8 @@ const fs = require('fs');
 
 const checks = [
   'scripts/verify-room-action.js',
-  'scripts/verify-online-game-page.js',
   'scripts/verify-online-game-state.js',
+  'scripts/verify-minigame-runtime.js',
 ];
 
 function assert(condition, message) {
@@ -21,28 +21,31 @@ function verifyJson(file) {
 }
 
 function verifySourceGuards() {
-  const clientSource = [
-    read('pages/room/create.js'),
-    read('pages/room/create.wxml'),
-    read('services/roomService.js'),
-  ].join('\n');
+  const gameEntry = read('game.js');
+  const runtimeSource = read('game/runtime.js');
+  const onlineSource = read('game/scenes/onlineGameScene.js');
   const cloudSource = read('cloudfunctions/roomAction/index.js');
   const permissionDoc = read('docs/DATABASE_PERMISSIONS.md');
   const projectConfig = JSON.parse(read('project.config.json'));
-  const ignoredFolders = projectConfig.packOptions.ignore
-    .filter(item => item.type === 'folder')
-    .map(item => item.value);
+  const ignored = projectConfig.packOptions.ignore.map(item => `${item.type}:${item.value}`);
 
-  assert(!clientSource.includes('selfTest'), 'client must not expose self-test actions');
-  assert(!clientSource.includes('云端自检'), 'client must not expose cloud diagnostic UI');
+  assert(projectConfig.compileType === 'game', 'project must compile as a Mini Game');
+  assert(gameEntry.includes("require('./game/runtime')"), 'game.js must boot the Canvas runtime');
+  assert(runtimeSource.includes('wxApi.createCanvas()'), 'runtime must create a Mini Game Canvas');
+  assert(runtimeSource.includes('wxApi.onTouchStart'), 'runtime must register touch input');
+  assert(onlineSource.includes('placePiece'), 'online scene must use the cloud move action');
+  assert(onlineSource.includes('restartRoom'), 'online scene must support another round');
   assert(cloudSource.includes('ENABLE_ROOM_DIAGNOSTICS'), 'cloud diagnostics must be release-gated');
   assert(cloudSource.includes('isBoardFull(nextBoard)'), 'cloud action must finish full-board draws');
   assert(permissionDoc.includes('"write": false'), 'database permission guide must disable client writes');
   assert(projectConfig.setting.urlCheck === true, 'release build must keep URL validation enabled');
   assert(projectConfig.setting.minified === true, 'release build must enable JavaScript minification');
-  assert(ignoredFolders.includes('.codex-preview'), 'release build must exclude local preview artifacts');
+  assert(ignored.includes('folder:pages'), 'release package must exclude Mini Program pages');
+  assert(ignored.includes('folder:components'), 'release package must exclude Mini Program components');
+  assert(ignored.includes('file:app.json'), 'release package must exclude the Mini Program manifest');
+  assert(ignored.includes('folder:.codex-preview'), 'release package must exclude local preview artifacts');
 
-  console.log('release source guards ok');
+  console.log('mini game release source guards ok');
 }
 
 function listJavaScriptFiles(directory) {
@@ -55,9 +58,7 @@ function listJavaScriptFiles(directory) {
 
 function verifyJavaScriptSyntax() {
   listJavaScriptFiles('.').forEach(file => {
-    const result = spawnSync(process.execPath, ['--check', file], {
-      encoding: 'utf8',
-    });
+    const result = spawnSync(process.execPath, ['--check', file], { encoding: 'utf8' });
     assert(result.status === 0, `${file} syntax check failed:\n${result.stderr}`);
   });
   console.log('javascript syntax ok');
@@ -75,16 +76,15 @@ function runChecks() {
 
 function main() {
   [
-    'app.json',
+    'game.json',
     'project.config.json',
-    'sitemap.json',
     'cloudfunctions/roomAction/package.json',
   ].forEach(verifyJson);
 
   verifySourceGuards();
   verifyJavaScriptSyntax();
   runChecks();
-  console.log('V1.0 automated release gate ok');
+  console.log('Mini Game automated release gate ok');
 }
 
 try {
