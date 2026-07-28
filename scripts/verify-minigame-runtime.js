@@ -5,6 +5,7 @@ const HomeScene = require('../game/scenes/homeScene');
 const JoinRoomScene = require('../game/scenes/joinRoomScene');
 const LocalGameScene = require('../game/scenes/localGameScene');
 const OnlineGameScene = require('../game/scenes/onlineGameScene');
+const ProfileScene = require('../game/scenes/profileScene');
 const WaitRoomScene = require('../game/scenes/waitRoomScene');
 const InputManager = require('../game/core/inputManager');
 const { buildRoomSharePayload } = require('../utils/share');
@@ -58,7 +59,30 @@ function createWxMock() {
       };
     },
     getSystemInfoSync() {
-      return { screenWidth: 375, screenHeight: 667, pixelRatio: 1 };
+      return {
+        screenWidth: 375,
+        screenHeight: 667,
+        pixelRatio: 1,
+        statusBarHeight: 20,
+      };
+    },
+    getMenuButtonBoundingClientRect() {
+      return this.menuButtonRect || {
+        top: 24,
+        bottom: 56,
+        left: 280,
+        right: 350,
+        width: 70,
+        height: 32,
+      };
+    },
+    requirePrivacyAuthorize(options) {
+      this.privacyAuthorizeCalls = (this.privacyAuthorizeCalls || 0) + 1;
+      if (this.privacyAuthorizeError) {
+        options.fail({ errMsg: this.privacyAuthorizeError });
+        return;
+      }
+      options.success({});
     },
     onTouchStart(handler) {
       this.touchHandler = handler;
@@ -165,6 +189,9 @@ async function verifyWeChatLogin() {
 
   runtime.manager.go('profile');
   const profileScene = runtime.manager.current;
+  assert(wx.privacyAuthorizeCalls === 1, 'profile scene must prepare official privacy authorization');
+  assert(wx.lastUserInfoButton.options.style.top === profileScene.getLayout().syncY,
+    'native profile button must align with the Canvas authorization button');
   profileScene.editNickname();
   const confirmNickname = wx.keyboardHandler;
   confirmNickname({ value: '自定义棋手' });
@@ -190,6 +217,25 @@ async function verifyIncompleteProfileIsNotMarkedComplete() {
   assert(!stored.wechatNickname, 'default nickname must not be misreported as a WeChat nickname');
   assert(runtime.manager.current.constructor.name === 'ProfileScene', 'incomplete profile must open the player setup scene');
   assert(homeScene.userInfoButton === null, 'home native login button must be cleaned before changing scenes');
+}
+
+function verifyPrivacyAuthorizationFailure() {
+  const wx = createWxMock();
+  wx.privacyAuthorizeError = 'requirePrivacyAuthorize:fail privacy deny';
+  wx.setStorageSync('gomoku_player_session_v1', {
+    openId: 'test-wechat-openid',
+    nickname: '微信棋友',
+    avatarMode: 'jade',
+  });
+  const runtime = createRuntime(wx);
+  runtime.start();
+  runtime.manager.go('profile');
+
+  const scene = runtime.manager.current;
+  assert(scene instanceof ProfileScene, 'privacy failure check must enter ProfileScene');
+  assert(!scene.userInfoButton, 'native user-info button must wait for privacy authorization');
+  assert(wx.lastModal && wx.lastModal.title === '需要隐私授权',
+    'privacy refusal must show a clear recovery message');
 }
 
 async function verifySurrenderConfirmation() {
@@ -401,6 +447,7 @@ function verifyTouchLayouts() {
       role: 'host',
       color: 'black',
     }),
+    new ProfileScene(createLayoutRuntime(width, height)),
   ];
 
   scenes[3].roomId = '123456';
@@ -419,6 +466,35 @@ function verifyTouchLayouts() {
       assert(rect.height >= 38, `${scene.constructor.name} touch target must remain finger friendly`);
     });
   });
+}
+
+function verifySafeAreaAvoidsCapsule() {
+  const runtime = createLayoutRuntime(375, 667);
+  runtime.wx.menuButtonRect = {
+    top: 38,
+    bottom: 74,
+    left: 280,
+    right: 350,
+    width: 70,
+    height: 36,
+  };
+
+  const home = new HomeScene(runtime);
+  const profile = new ProfileScene(runtime);
+  const online = new OnlineGameScene(runtime, {
+    roomId: '123456',
+    role: 'host',
+    color: 'black',
+  });
+  const input = new InputManager();
+  online.render(createContextMock(), input);
+
+  assert(home.getLayout().playerY > runtime.wx.menuButtonRect.bottom,
+    'home player card must begin below the WeChat capsule');
+  assert(profile.getLayout().titleY > runtime.wx.menuButtonRect.bottom,
+    'profile title must begin below the WeChat capsule');
+  assert(online.boardRect.y > runtime.wx.menuButtonRect.bottom,
+    'online board and controls must begin below the WeChat capsule');
 }
 
 function createLayoutRuntime(width, height) {
@@ -540,6 +616,7 @@ async function main() {
   verifyRuntimeBoot();
   await verifyWeChatLogin();
   await verifyIncompleteProfileIsNotMarkedComplete();
+  verifyPrivacyAuthorizationFailure();
   await verifySurrenderConfirmation();
   verifyLocalBoardTap();
   verifyJoinKeypad();
@@ -549,6 +626,7 @@ async function main() {
   verifyHotSharedRoomEntry();
   verifyRoomShare();
   verifyTouchLayouts();
+  verifySafeAreaAvoidsCapsule();
   await verifyStaleJoinCannotChangeScene();
   verifyHostReturnsToWaitingWhenGuestLeaves();
   verifyRematchAndDepartureViewState();

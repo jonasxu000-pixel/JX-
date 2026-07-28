@@ -5,6 +5,7 @@ const { drawButton } = require('../renderers/buttonRenderer');
 const { drawLabel } = require('../renderers/textRenderer');
 const { drawCard, drawPill } = require('../renderers/cardRenderer');
 const { COLORS } = require('../design/theme');
+const { getContentTop } = require('../../utils/safeArea');
 
 class OnlineGameScene {
   constructor(runtime, params) {
@@ -138,26 +139,27 @@ class OnlineGameScene {
 
   render(ctx, input) {
     const { width } = this.runtime;
-    this.boardRect = boardRenderer.getBoardRect(width, 122);
+    const safeTop = getContentTop(this.runtime.wx);
+    this.boardRect = boardRenderer.getBoardRect(width, safeTop + 94);
     const roleText = this.role === 'host' ? '黑棋' : '白棋';
 
-    drawLabel(ctx, `好友房 ${this.roomId}`, 20, 38, 'left', { bold: true, size: 17 });
+    drawLabel(ctx, `好友房 ${this.roomId}`, 20, safeTop + 14, 'left', { bold: true, size: 17 });
     drawPill(ctx, {
       x: width - 102,
-      y: 24,
+      y: safeTop,
       width: 82,
       text: `你执${roleText}`,
       fill: this.role === 'host' ? COLORS.goldSoft : COLORS.blueSoft,
       color: this.role === 'host' ? '#79551D' : COLORS.blue,
     });
-    drawLabel(ctx, this.syncing ? '正在同步棋局…' : this.statusText, width / 2, 82, 'center', {
+    drawLabel(ctx, this.syncing ? '正在同步棋局…' : this.statusText, width / 2, safeTop + 58, 'center', {
       bold: this.isMyTurn,
       color: this.isMyTurn ? COLORS.jade : COLORS.ink,
     });
     if (!this.gameOver) {
       drawButton(ctx, input, {
         x: width - 66,
-        y: 70,
+        y: safeTop + 42,
         width: 46,
         height: 38,
         text: '⚑',

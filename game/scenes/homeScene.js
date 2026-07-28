@@ -9,6 +9,7 @@ const {
 } = require('../../utils/playerSession');
 const { showToast } = require('../../utils/clipboard');
 const { drawAvatar } = require('../renderers/avatarRenderer');
+const { getContentTop } = require('../../utils/safeArea');
 
 class HomeScene {
   constructor(runtime) {
@@ -64,6 +65,7 @@ class HomeScene {
       || !wxApi
       || typeof wxApi.createUserInfoButton !== 'function') return;
     const { width } = this.runtime;
+    const layout = this.getLayout();
     this.userInfoButton = wxApi.createUserInfoButton({
       type: 'text',
       text: '微信快捷登录',
@@ -71,7 +73,7 @@ class HomeScene {
       lang: 'zh_CN',
       style: {
         left: 28,
-        top: 38,
+        top: layout.playerY + 10,
         width: width - 56,
         height: 54,
         lineHeight: 54,
@@ -94,25 +96,26 @@ class HomeScene {
 
   render(ctx, input) {
     const { width, manager } = this.runtime;
+    const layout = this.getLayout();
     const buttonWidth = Math.min(width - 48, 340);
     const x = (width - buttonWidth) / 2;
-    const startY = 332;
+    const startY = layout.actionY;
 
-    this.drawPlayerBar(ctx, input);
+    this.drawPlayerBar(ctx, input, layout);
 
     drawCard(ctx, {
       x: 20,
-      y: 116,
+      y: layout.heroY,
       width: width - 40,
       height: 190,
       fill: COLORS.surface,
     });
-    drawBrandStones(ctx, width / 2, 150);
-    drawTitle(ctx, '你棋没我硬', width / 2, 194);
-    drawSubtitle(ctx, '好友联机五子棋 · 落子见真章', width / 2, 226);
+    drawBrandStones(ctx, width / 2, layout.heroY + 34);
+    drawTitle(ctx, '你棋没我硬', width / 2, layout.heroY + 78);
+    drawSubtitle(ctx, '好友联机五子棋 · 落子见真章', width / 2, layout.heroY + 110);
     drawPill(ctx, {
       x: width / 2 - 72,
-      y: 254,
+      y: layout.heroY + 138,
       width: 144,
       height: 34,
       text: '15 路棋盘 · 黑棋先行',
@@ -121,7 +124,7 @@ class HomeScene {
     if (!this.player && !this.userInfoButton) {
       drawButton(ctx, input, {
         x: 28,
-        y: 38,
+        y: layout.playerY + 10,
         width: width - 56,
         height: 54,
         text: this.loginLoading ? '登录中…' : '微信快捷登录',
@@ -163,11 +166,21 @@ class HomeScene {
     drawHomeDecoration(ctx, width, this.runtime.height);
   }
 
-  drawPlayerBar(ctx, input) {
+  getLayout() {
+    const playerY = getContentTop(this.runtime.wx);
+    const heroY = playerY + 88;
+    return {
+      playerY,
+      heroY,
+      actionY: heroY + 216,
+    };
+  }
+
+  drawPlayerBar(ctx, input, layout) {
     const { width, manager } = this.runtime;
     drawCard(ctx, {
       x: 20,
-      y: 28,
+      y: layout.playerY,
       width: width - 40,
       height: 72,
       radius: 20,
@@ -177,26 +190,31 @@ class HomeScene {
       return;
     }
 
-    drawAvatar(ctx, this.runtime.wx, this.player, 32, 38, 52, () => manager.render());
-    drawLabel(ctx, this.player.nickname, 96, 54, 'left', { bold: true, size: 16 });
+    drawAvatar(ctx, this.runtime.wx, this.player, 32, layout.playerY + 10, 52, () => manager.render());
+    drawLabel(ctx, this.player.nickname, 96, layout.playerY + 26, 'left', { bold: true, size: 16 });
     drawLabel(
       ctx,
       this.player.profileCompleted ? '微信身份已连接 · 点击编辑资料' : '微信身份已连接 · 请完善头像昵称',
       96,
-      78,
+      layout.playerY + 50,
       'left',
       { size: 11, color: this.player.profileCompleted ? COLORS.inkMuted : COLORS.danger },
     );
     drawPill(ctx, {
       x: width - 78,
-      y: 47,
+      y: layout.playerY + 19,
       width: 46,
       height: 32,
       text: '资料',
       fill: COLORS.blueSoft,
       color: COLORS.blue,
     });
-    input.addHitArea({ x: 20, y: 28, width: width - 40, height: 72 }, () => manager.go('profile'));
+    input.addHitArea({
+      x: 20,
+      y: layout.playerY,
+      width: width - 40,
+      height: 72,
+    }, () => manager.go('profile'));
   }
 }
 

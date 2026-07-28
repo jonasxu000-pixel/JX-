@@ -27,9 +27,12 @@ function verifySourceGuards() {
   const shareSource = read('utils/share.js');
   const playerSessionSource = read('utils/playerSession.js');
   const profileSource = read('game/scenes/profileScene.js');
+  const homeSource = read('game/scenes/homeScene.js');
   const onlineSource = read('game/scenes/onlineGameScene.js');
+  const safeAreaSource = read('utils/safeArea.js');
   const cloudSource = read('cloudfunctions/roomAction/index.js');
   const permissionDoc = read('docs/DATABASE_PERMISSIONS.md');
+  const gameConfig = JSON.parse(read('game.json'));
   const projectConfig = JSON.parse(read('project.config.json'));
   const ignored = projectConfig.packOptions.ignore.map(item => `${item.type}:${item.value}`);
 
@@ -47,6 +50,7 @@ function verifySourceGuards() {
   assert(runtimeSource.includes("manager.register('home'"), 'runtime must register the authenticated home scene');
   assert(playerSessionSource.includes('gomoku_player_session_v1'), 'WeChat login must persist a local player session');
   assert(profileSource.includes('createUserInfoButton'), 'profile must use the official user-authorized WeChat info button');
+  assert(profileSource.includes('requirePrivacyAuthorize'), 'profile must prepare official privacy authorization');
   assert(profileSource.includes('chooseMedia'), 'profile must use the maintained media picker for album avatars');
   assert(profileSource.includes('chooseImage'), 'profile must retain a legacy album-picker fallback');
   assert(profileSource.includes('saveFile'), 'custom album avatar must be persisted in the Mini Game file sandbox');
@@ -55,6 +59,13 @@ function verifySourceGuards() {
   assert(onlineSource.includes('placePiece'), 'online scene must use the cloud move action');
   assert(onlineSource.includes('restartRoom'), 'online scene must support another round');
   assert(onlineSource.includes('confirmSurrender'), 'online scene must confirm surrender before ending a round');
+  assert(homeSource.includes('getContentTop'), 'home scene must respect the WeChat capsule safe area');
+  assert(profileSource.includes('getContentTop'), 'profile scene must respect the WeChat capsule safe area');
+  assert(onlineSource.includes('getContentTop'), 'online scene must respect the WeChat capsule safe area');
+  assert(safeAreaSource.includes('getMenuButtonBoundingClientRect'),
+    'safe area helper must derive layout from the live WeChat capsule');
+  assert(gameConfig.officialPrivacyAuthorizationShowingGap === 10,
+    'official privacy authorization retry interval must be configured');
   assert(cloudSource.includes('surrenderRoomForOpenId'), 'surrender must be adjudicated by the cloud action');
   assert(cloudSource.includes('ENABLE_ROOM_DIAGNOSTICS'), 'cloud diagnostics must be release-gated');
   assert(cloudSource.includes('isBoardFull(nextBoard)'), 'cloud action must finish full-board draws');

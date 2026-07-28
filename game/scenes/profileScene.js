@@ -9,6 +9,7 @@ const {
   updatePlayer,
 } = require('../../utils/playerSession');
 const { showToast } = require('../../utils/clipboard');
+const { getContentTop } = require('../../utils/safeArea');
 
 class ProfileScene {
   constructor(runtime) {
@@ -17,11 +18,14 @@ class ProfileScene {
     this.keyboardHandler = null;
     this.userInfoButton = null;
     this.savingAvatar = false;
+    this.privacyPreparing = false;
+    this.privacyReady = false;
+    this.privacyError = '';
   }
 
   onEnter() {
     this.player = getStoredPlayer(this.runtime.wx);
-    this.createWeChatProfileButton();
+    this.preparePrivacyAuthorization();
     this.refreshAuthorizedProfile();
   }
 
@@ -33,28 +37,29 @@ class ProfileScene {
 
   render(ctx, input) {
     const { width, manager } = this.runtime;
-    drawTitle(ctx, '玩家资料', width / 2, 52);
-    drawSubtitle(ctx, '连接微信身份后，可授权同步或自定义游戏资料', width / 2, 84);
+    const layout = this.getLayout();
+    drawTitle(ctx, '玩家资料', width / 2, layout.titleY);
+    drawSubtitle(ctx, '连接微信身份后，可授权同步或自定义游戏资料', width / 2, layout.subtitleY);
 
     drawCard(ctx, {
       x: 28,
-      y: 108,
+      y: layout.cardY,
       width: width - 56,
-      height: 150,
+      height: 132,
     });
-    drawAvatar(ctx, this.runtime.wx, this.player, width / 2 - 38, 124, 76, () => manager.render());
-    drawLabel(ctx, this.player ? this.player.nickname : '棋友', width / 2, 218, 'center', {
+    drawAvatar(ctx, this.runtime.wx, this.player, width / 2 - 34, layout.cardY + 12, 68, () => manager.render());
+    drawLabel(ctx, this.player ? this.player.nickname : '棋友', width / 2, layout.cardY + 98, 'center', {
       bold: true,
       size: 18,
     });
-    drawLabel(ctx, this.player ? '微信身份已连接' : '尚未连接微信身份', width / 2, 240, 'center', {
+    drawLabel(ctx, this.player ? '微信身份已连接' : '尚未连接微信身份', width / 2, layout.cardY + 120, 'center', {
       size: 11,
       color: this.player ? COLORS.jade : COLORS.danger,
     });
 
     drawPill(ctx, {
       x: width / 2 - 62,
-      y: 276,
+      y: layout.pillY,
       width: 124,
       text: this.getAvatarSourceText(),
       fill: COLORS.jadeSoft,
@@ -63,7 +68,7 @@ class ProfileScene {
 
     drawButton(ctx, input, {
       x: 36,
-      y: 342,
+      y: layout.albumY,
       width: width - 72,
       height: 50,
       text: this.savingAvatar ? '正在保存头像…' : '从相册选择头像',
@@ -75,18 +80,19 @@ class ProfileScene {
     if (!this.userInfoButton) {
       drawButton(ctx, input, {
         x: 36,
-        y: 406,
+        y: layout.syncY,
         width: width - 72,
         height: 50,
-        text: '同步微信头像和昵称',
+        text: this.privacyPreparing ? '正在准备微信授权…' : '重新申请微信资料授权',
         variant: 'gold',
-        onTap: () => this.showProfileHelp(),
+        disabled: this.privacyPreparing,
+        onTap: () => this.preparePrivacyAuthorization(true),
       });
     }
 
     drawButton(ctx, input, {
       x: 36,
-      y: 470,
+      y: layout.nicknameY,
       width: width - 72,
       height: 50,
       text: '修改游戏昵称',
@@ -95,7 +101,7 @@ class ProfileScene {
     });
     drawButton(ctx, input, {
       x: 36,
-      y: 534,
+      y: layout.defaultAvatarY,
       width: width - 72,
       height: 44,
       text: '恢复系统默认头像',
@@ -104,13 +110,29 @@ class ProfileScene {
     });
     drawButton(ctx, input, {
       x: 36,
-      y: 592,
+      y: layout.saveY,
       width: width - 72,
       height: 50,
       text: '保存并返回首页',
       onTap: () => manager.go('home'),
     });
-    drawSubtitle(ctx, '头像和昵称只用于游戏内展示，不会静默读取', width / 2, 660);
+    drawSubtitle(ctx, '头像和昵称只用于游戏内展示，不会静默读取', width / 2, layout.footerY);
+  }
+
+  getLayout() {
+    const safeTop = getContentTop(this.runtime.wx);
+    return {
+      titleY: safeTop + 22,
+      subtitleY: safeTop + 48,
+      cardY: safeTop + 68,
+      pillY: safeTop + 212,
+      syncY: safeTop + 254,
+      albumY: safeTop + 314,
+      nicknameY: safeTop + 374,
+      defaultAvatarY: safeTop + 434,
+      saveY: safeTop + 488,
+      footerY: safeTop + 554,
+    };
   }
 
   getAvatarSourceText() {
@@ -122,8 +144,12 @@ class ProfileScene {
 
   createWeChatProfileButton() {
     const wxApi = this.runtime.wx;
-    if (!wxApi || typeof wxApi.createUserInfoButton !== 'function') return;
+    if (!this.privacyReady
+      || this.userInfoButton
+      || !wxApi
+      || typeof wxApi.createUserInfoButton !== 'function') return;
     const { width } = this.runtime;
+    const layout = this.getLayout();
     this.userInfoButton = wxApi.createUserInfoButton({
       type: 'text',
       text: '同步微信头像和昵称',
@@ -131,7 +157,7 @@ class ProfileScene {
       lang: 'zh_CN',
       style: {
         left: 36,
-        top: 406,
+        top: layout.syncY,
         width: width - 72,
         height: 50,
         lineHeight: 50,
@@ -149,6 +175,54 @@ class ProfileScene {
       }
       this.applyWeChatProfile(result.userInfo);
     });
+  }
+
+  preparePrivacyAuthorization(force = false) {
+    if (this.privacyPreparing || (this.privacyReady && !force)) return;
+
+    const wxApi = this.runtime.wx;
+    this.destroyWeChatProfileButton();
+    this.privacyError = '';
+
+    if (!wxApi || typeof wxApi.requirePrivacyAuthorize !== 'function') {
+      this.privacyReady = true;
+      this.createWeChatProfileButton();
+      this.runtime.manager.render();
+      return;
+    }
+
+    this.privacyPreparing = true;
+    this.privacyReady = false;
+    this.runtime.manager.render();
+    wxApi.requirePrivacyAuthorize({
+      success: () => {
+        this.privacyPreparing = false;
+        this.privacyReady = true;
+        this.createWeChatProfileButton();
+        this.runtime.manager.render();
+      },
+      fail: err => {
+        this.privacyPreparing = false;
+        this.privacyReady = false;
+        this.privacyError = String((err && err.errMsg) || 'privacy authorization failed');
+        this.runtime.manager.render();
+        this.showPrivacyFailure();
+      },
+    });
+  }
+
+  showPrivacyFailure() {
+    const wxApi = this.runtime.wx;
+    if (wxApi && typeof wxApi.showModal === 'function') {
+      wxApi.showModal({
+        title: '需要隐私授权',
+        content: '同步微信头像昵称前，需要先同意《用户隐私保护指引》。你也可以继续使用相册头像和自定义昵称。',
+        showCancel: false,
+        confirmText: '知道了',
+      });
+      return;
+    }
+    showToast(wxApi, '请先同意用户隐私保护指引');
   }
 
   refreshAuthorizedProfile() {
@@ -195,12 +269,20 @@ class ProfileScene {
 
   showProfileHelp(detail = '') {
     const wxApi = this.runtime.wx;
+    const errorDetail = String(detail || '');
+    if (errorDetail && typeof console !== 'undefined' && console.warn) {
+      console.warn('[profile] 微信资料授权未完成:', errorDetail);
+    }
     if (wxApi && typeof wxApi.showModal === 'function') {
+      const isDenied = errorDetail.includes('deny') || errorDetail.includes('cancel');
+      const diagnostic = errorDetail
+        ? `\n\n微信返回：${errorDetail.slice(0, 80)}`
+        : '';
       wxApi.showModal({
-        title: '未取得微信资料',
-        content: detail && detail.includes('deny')
+        title: '微信未返回头像昵称',
+        content: isDenied
           ? '你已取消授权。仍可使用相册头像和自定义游戏昵称。'
-          : '请在微信授权窗口中确认；若当前微信版本未返回资料，可使用相册头像和自定义游戏昵称。',
+          : `请确认小游戏后台已声明“昵称、头像”并开启“隐私授权弹窗”。完成前可使用相册头像和自定义昵称。${diagnostic}`,
         showCancel: false,
         confirmText: '知道了',
       });
