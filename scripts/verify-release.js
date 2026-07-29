@@ -23,6 +23,8 @@ function verifyJson(file) {
 function verifySourceGuards() {
   const gameEntry = read('game.js');
   const runtimeSource = read('game/runtime.js');
+  const inputSource = read('game/core/inputManager.js');
+  const buttonSource = read('game/renderers/buttonRenderer.js');
   const joinSource = read('game/scenes/joinRoomScene.js');
   const shareSource = read('utils/share.js');
   const roomServiceSource = read('services/roomService.js');
@@ -40,7 +42,13 @@ function verifySourceGuards() {
   assert(projectConfig.compileType === 'game', 'project must compile as a Mini Game');
   assert(gameEntry.includes("require('./game/runtime')"), 'game.js must boot the Canvas runtime');
   assert(runtimeSource.includes('wxApi.createCanvas()'), 'runtime must create a Mini Game Canvas');
-  assert(runtimeSource.includes('wxApi.onTouchStart'), 'runtime must register touch input');
+  assert(runtimeSource.includes('wxApi.onTouchStart'), 'runtime must register touch start input');
+  assert(runtimeSource.includes('wxApi.onTouchMove'), 'runtime must register touch move input');
+  assert(runtimeSource.includes('wxApi.onTouchEnd'), 'runtime must register touch end input');
+  assert(runtimeSource.includes('wxApi.onTouchCancel'), 'runtime must register touch cancel input');
+  assert(inputSource.includes('handleTouchEnd'), 'buttons must activate on touch release');
+  assert(inputSource.includes('handleTouchCancel'), 'buttons must support touch cancellation');
+  assert(buttonSource.includes('input.isPressed'), 'buttons must render pressed feedback');
   assert(joinSource.includes('autoFillFromClipboard'), 'join scene must automatically detect a copied room id');
   assert(!joinSource.includes('一键粘贴房间号'), 'join scene must not require a manual paste button');
   assert(joinSource.includes('if (digit) ctx.fillText'), 'join scene must render truly empty room-id slots');

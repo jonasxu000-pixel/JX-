@@ -49,15 +49,18 @@ function drawButton(ctx, input, options) {
   const resolvedText = textColor || style.textColor;
   const resolvedStroke = stroke || style.stroke;
   const radius = Math.min(LAYOUT.buttonRadius, height / 2);
+  const rect = { x, y, width, height };
+  const pressed = !disabled && input.isPressed(rect);
+  const drawY = y + (pressed ? 1 : 0);
 
   ctx.save();
-  ctx.globalAlpha = disabled ? 0.48 : 1;
-  if (!disabled && variant === 'primary') {
+  ctx.globalAlpha = disabled ? 0.48 : (pressed ? 0.84 : 1);
+  if (!disabled && !pressed && variant === 'primary') {
     ctx.shadowColor = 'rgba(37, 107, 82, 0.2)';
     ctx.shadowBlur = 12;
     ctx.shadowOffsetY = 4;
   }
-  roundedRectPath(ctx, x, y, width, height, radius);
+  roundedRectPath(ctx, x, drawY, width, height, radius);
   ctx.fillStyle = resolvedFill;
   ctx.fill();
   ctx.shadowColor = 'transparent';
@@ -71,10 +74,10 @@ function drawButton(ctx, input, options) {
   ctx.font = `bold ${fontSize}px sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(text, x + width / 2, y + height / 2);
+  ctx.fillText(text, x + width / 2, drawY + height / 2);
   ctx.restore();
 
-  input.addHitArea({ x, y, width, height }, onTap, disabled);
+  input.addHitArea(rect, onTap, disabled);
 }
 
 module.exports = {

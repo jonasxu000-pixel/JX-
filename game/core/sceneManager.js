@@ -17,6 +17,7 @@ class SceneManager {
     const SceneType = this.sceneTypes[name];
     if (!SceneType) throw new Error(`Unknown scene: ${name}`);
 
+    this.input.handleTouchCancel();
     if (this.current && this.current.onExit) {
       this.current.onExit();
     }
@@ -44,18 +45,72 @@ class SceneManager {
     }
   }
 
-  handleTouch(event) {
-    const touch = event && event.touches && event.touches[0];
-    if (!touch) return;
+  getTouchPoint(event, changed) {
+    if (!event) return null;
+    const preferred = changed ? event.changedTouches : event.touches;
+    const fallback = changed ? event.touches : event.changedTouches;
+    const touch = (preferred && preferred[0]) || (fallback && fallback[0]);
+    if (!touch) return null;
+    return {
+      x: touch.clientX,
+      y: touch.clientY,
+    };
+  }
 
-    if (this.input.handleTouch(touch.clientX, touch.clientY)) return;
+  handleTouchStart(event) {
+    const point = this.getTouchPoint(event, false);
+    if (!point) return;
+
+    if (this.input.handleTouchStart(point.x, point.y)) {
+      this.render();
+      return;
+    }
 
     if (this.current && this.current.handleTouch) {
-      this.current.handleTouch(touch.clientX, touch.clientY);
+      this.current.handleTouch(point.x, point.y);
     }
   }
 
+  handleTouchMove(event) {
+    if (!this.input.hasActiveTouch()) return;
+    const point = this.getTouchPoint(event, false);
+    if (!point) return;
+    if (this.input.handleTouchMove(point.x, point.y)) {
+      this.render();
+    }
+  }
+
+  handleTouchEnd(event) {
+    if (!this.input.hasActiveTouch()) return;
+    const point = this.getTouchPoint(event, true);
+    if (!point) {
+      this.handleTouchCancel();
+      return;
+    }
+
+    const result = this.input.handleTouchEnd(point.x, point.y);
+    if (!result.captured) return;
+
+    // 先清除按压态，再执行页面跳转或业务操作。
+    this.render();
+    if (result.onTap) {
+      result.onTap({ x: point.x, y: point.y });
+    }
+  }
+
+  handleTouchCancel() {
+    if (this.input.handleTouchCancel()) {
+      this.render();
+    }
+  }
+
+  // 保留旧入口供现有测试和内部调用使用，语义仍是触摸开始。
+  handleTouch(event) {
+    this.handleTouchStart(event);
+  }
+
   resume() {
+    this.input.handleTouchCancel();
     if (this.current && this.current.onResume) {
       this.current.onResume();
     }

@@ -56,7 +56,16 @@ function createRuntime(wxApi) {
     }
 
     if (wxApi.onTouchStart) {
-      wxApi.onTouchStart(event => manager.handleTouch(event));
+      wxApi.onTouchStart(event => manager.handleTouchStart(event));
+    }
+    if (wxApi.onTouchMove) {
+      wxApi.onTouchMove(event => manager.handleTouchMove(event));
+    }
+    if (wxApi.onTouchEnd) {
+      wxApi.onTouchEnd(event => manager.handleTouchEnd(event));
+    }
+    if (wxApi.onTouchCancel) {
+      wxApi.onTouchCancel(() => manager.handleTouchCancel());
     }
 
     if (wxApi.onShow) {

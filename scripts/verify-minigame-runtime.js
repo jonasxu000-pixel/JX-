@@ -52,6 +52,9 @@ function createWxMock() {
   const storage = {};
   return {
     touchHandler: null,
+    touchMoveHandler: null,
+    touchEndHandler: null,
+    touchCancelHandler: null,
     showHandler: null,
     createCanvas() {
       return {
@@ -90,6 +93,15 @@ function createWxMock() {
     },
     onTouchStart(handler) {
       this.touchHandler = handler;
+    },
+    onTouchMove(handler) {
+      this.touchMoveHandler = handler;
+    },
+    onTouchEnd(handler) {
+      this.touchEndHandler = handler;
+    },
+    onTouchCancel(handler) {
+      this.touchCancelHandler = handler;
     },
     onShow(handler) {
       this.showHandler = handler;
@@ -389,13 +401,113 @@ function createStartedRuntime() {
 function verifyRuntimeBoot() {
   const { wx, runtime } = createStartedRuntime();
   assert(wx.cloud.initOptions.env === CLOUD_ENV, 'runtime must initialize the expected cloud environment');
-  assert(typeof wx.touchHandler === 'function', 'runtime must register touch input');
+  assert(typeof wx.touchHandler === 'function', 'runtime must register touch start input');
+  assert(typeof wx.touchMoveHandler === 'function', 'runtime must register touch move input');
+  assert(typeof wx.touchEndHandler === 'function', 'runtime must register touch end input');
+  assert(typeof wx.touchCancelHandler === 'function', 'runtime must register touch cancel input');
   assert(typeof wx.showHandler === 'function', 'runtime must register foreground recovery');
   assert(runtime.manager.current.constructor.name === 'HomeScene', 'runtime must boot into HomeScene');
   assert(
     wx.cloud.callFunctionCalls.some(call => call.name === 'roomAction' && call.data.action === 'ping'),
     'runtime must prewarm roomAction on startup',
   );
+}
+
+function verifyButtonReleaseSemantics() {
+  const rect = {
+    x: 20,
+    y: 30,
+    width: 120,
+    height: 52,
+  };
+  let taps = 0;
+
+  function createInput() {
+    const input = new InputManager();
+    input.addHitArea(rect, () => {
+      taps += 1;
+    });
+    return input;
+  }
+
+  let input = createInput();
+  assert(input.handleTouchStart(40, 50), 'touch start inside a button must be captured');
+  assert(taps === 0, 'touch start must not activate a button');
+  assert(input.isPressed(rect), 'captured button must expose pressed feedback');
+  let result = input.handleTouchEnd(40, 50);
+  assert(result.captured && typeof result.onTap === 'function',
+    'touch end inside the original button must prepare one activation');
+  result.onTap({ x: 40, y: 50 });
+  assert(taps === 1, 'touch end inside the original button must activate exactly once');
+  assert(!input.isPressed(rect), 'button must clear pressed feedback after release');
+
+  input = createInput();
+  input.handleTouchStart(40, 50);
+  input.handleTouchMove(200, 200);
+  result = input.handleTouchEnd(200, 200);
+  assert(result.captured && result.onTap === null,
+    'sliding outside before release must cancel button activation');
+  assert(taps === 1, 'a canceled slide must not activate the button');
+
+  input = createInput();
+  input.handleTouchStart(40, 50);
+  assert(input.handleTouchCancel(), 'touch cancel must clear a captured button');
+  result = input.handleTouchEnd(40, 50);
+  assert(!result.captured && result.onTap === null,
+    'release after touch cancel must remain inactive');
+  assert(taps === 1, 'touch cancel must not activate the button');
+
+  input = new InputManager();
+  input.addHitArea(rect, () => {
+    taps += 1;
+  });
+  input.addHitArea({
+    x: 160,
+    y: 30,
+    width: 120,
+    height: 52,
+  }, () => {
+    taps += 10;
+  });
+  input.handleTouchStart(40, 50);
+  input.handleTouchMove(180, 50);
+  result = input.handleTouchEnd(180, 50);
+  assert(result.captured && result.onTap === null,
+    'sliding from one button to another must activate neither button');
+  assert(taps === 1, 'cross-button sliding must not run either callback');
+}
+
+function verifyRuntimeButtonGesture() {
+  const { wx, runtime } = createStartedRuntime();
+  const home = runtime.manager.current;
+  const x = runtime.manager.runtime.width / 2;
+  const y = home.getLayout().actionY + 146 + 25;
+
+  wx.touchHandler({
+    touches: [{ clientX: x, clientY: y }],
+  });
+  assert(runtime.manager.current.constructor.name === 'HomeScene',
+    'touch start on a navigation button must not change scenes');
+  assert(runtime.manager.input.hasActiveTouch(),
+    'touch start on a navigation button must hold a pending gesture');
+
+  wx.touchMoveHandler({
+    touches: [{ clientX: 4, clientY: 4 }],
+  });
+  wx.touchEndHandler({
+    changedTouches: [{ clientX: 4, clientY: 4 }],
+  });
+  assert(runtime.manager.current.constructor.name === 'HomeScene',
+    'sliding away before release must cancel navigation');
+
+  wx.touchHandler({
+    touches: [{ clientX: x, clientY: y }],
+  });
+  wx.touchEndHandler({
+    changedTouches: [{ clientX: x, clientY: y }],
+  });
+  assert(runtime.manager.current.constructor.name === 'LocalGameScene',
+    'releasing inside the original navigation button must change scenes');
 }
 
 function verifyLocalBoardTap() {
@@ -677,6 +789,8 @@ async function verifyCopyFailureFeedback() {
 
 async function main() {
   verifyRuntimeBoot();
+  verifyButtonReleaseSemantics();
+  verifyRuntimeButtonGesture();
   await verifyWeChatLogin();
   await verifyIncompleteProfileIsNotMarkedComplete();
   verifyPrivacyAuthorizationFailure();
