@@ -44,7 +44,7 @@ class JoinRoomScene {
         width: 252,
         height: 30,
         text: this.error || this.feedback,
-        fill: this.error ? '#F5E4DF' : COLORS.jadeSoft,
+      fill: this.error ? COLORS.dangerSoft : COLORS.jadeSoft,
         color: this.error ? COLORS.danger : COLORS.jade,
       });
     }

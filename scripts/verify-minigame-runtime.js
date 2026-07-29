@@ -8,6 +8,10 @@ const OnlineGameScene = require('../game/scenes/onlineGameScene');
 const ProfileScene = require('../game/scenes/profileScene');
 const WaitRoomScene = require('../game/scenes/waitRoomScene');
 const InputManager = require('../game/core/inputManager');
+const {
+  drawResultOverlay,
+  getResultOverlayLayout,
+} = require('../game/renderers/resultOverlayRenderer');
 const { buildRoomSharePayload } = require('../utils/share');
 
 function assert(condition, message) {
@@ -26,6 +30,7 @@ function createContextMock() {
     save: noop,
     restore: noop,
     scale: noop,
+    translate: noop,
     clearRect: noop,
     fillRect: noop,
     strokeRect: noop,
@@ -40,6 +45,11 @@ function createContextMock() {
     drawImage: noop,
     fillText(value) {
       texts.push(String(value));
+    },
+    measureText(value) {
+      const match = String(this.font || '').match(/(\d+)px/);
+      const size = match ? Number(match[1]) : 14;
+      return { width: String(value).length * size };
     },
     createRadialGradient() {
       return { addColorStop: noop };
@@ -56,6 +66,7 @@ function createWxMock() {
     touchEndHandler: null,
     touchCancelHandler: null,
     showHandler: null,
+    hideHandler: null,
     createCanvas() {
       return {
         width: 0,
@@ -105,6 +116,9 @@ function createWxMock() {
     },
     onShow(handler) {
       this.showHandler = handler;
+    },
+    onHide(handler) {
+      this.hideHandler = handler;
     },
     getLaunchOptionsSync() {
       return this.launchOptions || {};
@@ -262,7 +276,7 @@ function verifyOnlinePlayerProfiles() {
   const wx = createWxMock();
   wx.setStorageSync('gomoku_player_session_v1', {
     openId: 'guest-openid',
-    nickname: '本机白棋',
+    nickname: '本机白棋昵称也很长',
     avatarMode: 'wechat',
     wechatAvatarUrl: 'https://example.com/local-guest.png',
     profileCompleted: true,
@@ -288,7 +302,7 @@ function verifyOnlinePlayerProfiles() {
     host: {
       openId: 'host-openid',
       color: 'black',
-      nickname: '远程黑棋',
+      nickname: '远程黑棋十二字昵称',
       avatarUrl: 'https://example.com/remote-host.png',
     },
     guest: {
@@ -306,10 +320,12 @@ function verifyOnlinePlayerProfiles() {
   const ctx = createContextMock();
   const input = new InputManager();
   scene.render(ctx, input);
-  assert(scene.hostPlayer.nickname === '远程黑棋', 'opponent nickname must come from the room profile');
-  assert(scene.guestPlayer.nickname === '本机白棋', 'own player card must use the latest local profile');
-  assert(ctx.texts.includes('远程黑棋'), 'versus header must render the opponent nickname');
-  assert(ctx.texts.includes('本机白棋'), 'versus header must render the local nickname');
+  assert(scene.hostPlayer.nickname === '远程黑棋十二字昵称', 'opponent nickname must come from the room profile');
+  assert(scene.guestPlayer.nickname === '本机白棋昵称也很长', 'own player card must use the latest local profile');
+  assert(ctx.texts.includes('远程黑棋十二字昵称'),
+    'versus header must render the complete opponent nickname without fixed truncation');
+  assert(ctx.texts.includes('本机白棋昵称也很长'),
+    'versus header must render the complete local nickname without fixed truncation');
   assert(ctx.texts.includes('⚑ 投降'), 'surrender action must include a visible text label');
 }
 
@@ -406,11 +422,40 @@ function verifyRuntimeBoot() {
   assert(typeof wx.touchEndHandler === 'function', 'runtime must register touch end input');
   assert(typeof wx.touchCancelHandler === 'function', 'runtime must register touch cancel input');
   assert(typeof wx.showHandler === 'function', 'runtime must register foreground recovery');
+  assert(typeof wx.hideHandler === 'function', 'runtime must register background suspension');
   assert(runtime.manager.current.constructor.name === 'HomeScene', 'runtime must boot into HomeScene');
   assert(
     wx.cloud.callFunctionCalls.some(call => call.name === 'roomAction' && call.data.action === 'ping'),
     'runtime must prewarm roomAction on startup',
   );
+}
+
+function verifyForegroundCanvasRecovery() {
+  const { wx, runtime } = createStartedRuntime();
+  let scheduledFrame = null;
+  runtime.canvas.requestAnimationFrame = callback => {
+    scheduledFrame = callback;
+    return 7;
+  };
+  runtime.canvas.cancelAnimationFrame = () => {
+    scheduledFrame = null;
+  };
+
+  let renderCount = 0;
+  runtime.manager.render = () => {
+    renderCount += 1;
+  };
+
+  wx.hideHandler();
+  assert(runtime.manager.suspended, 'backgrounding must suspend foreground redraws');
+  wx.showHandler({});
+  assert(!runtime.manager.suspended, 'returning to the Mini Game must wake the scene manager');
+  assert(renderCount >= 1, 'foreground recovery must redraw immediately');
+  assert(typeof scheduledFrame === 'function',
+    'foreground recovery must schedule a Canvas animation-frame redraw');
+  scheduledFrame();
+  assert(renderCount >= 2, 'foreground recovery must redraw again after Canvas resumes');
+  runtime.manager.clearForegroundRedraw();
 }
 
 function verifyButtonReleaseSemantics() {
@@ -475,6 +520,118 @@ function verifyButtonReleaseSemantics() {
   assert(result.captured && result.onTap === null,
     'sliding from one button to another must activate neither button');
   assert(taps === 1, 'cross-button sliding must not run either callback');
+}
+
+function verifyResultOverlayLayout() {
+  [
+    { width: 320, height: 568, safeTop: 58 },
+    { width: 375, height: 667, safeTop: 64 },
+    { width: 430, height: 932, safeTop: 72 },
+  ].forEach(device => {
+    const layout = getResultOverlayLayout(device.width, device.height, device.safeTop);
+    assert(layout.cardX >= 16, 'result card must keep horizontal screen padding');
+    assert(layout.cardY >= device.safeTop, 'result card must stay below the capsule safe area');
+    assert(layout.cardX + layout.cardWidth <= device.width - 16,
+      'result card must stay within the screen width');
+    assert(layout.cardY + layout.cardHeight <= device.height,
+      'result card must stay within the screen height');
+  });
+
+  const ctx = createContextMock();
+  const input = new InputManager();
+  drawResultOverlay(ctx, input, {
+    width: 375,
+    height: 667,
+    safeTop: 64,
+    progress: 1,
+    presentation: {
+      badge: '胜',
+      badgeFill: '#14382B',
+      title: '你获胜',
+      subtitle: '漂亮，这一局拿下了',
+      color: '#14382B',
+      note: '棋逢对手，不妨再来一盘',
+    },
+    players: [
+      {
+        nickname: '黑棋棋手',
+        label: '黑棋 · 先手',
+        piece: 'black',
+        isWinner: true,
+        isSelf: true,
+      },
+      {
+        nickname: '白棋棋手',
+        label: '白棋 · 后手',
+        piece: 'white',
+      },
+    ],
+    primaryAction: {
+      text: '再来一局',
+      onTap() {},
+    },
+    secondaryAction: {
+      text: '返回首页',
+      onTap() {},
+    },
+  });
+  assert(ctx.texts.includes('胜'), 'result overlay must render the Chinese seal badge');
+  assert(ctx.texts.includes('你获胜'), 'result overlay must render the result title');
+  assert(ctx.texts.includes('VS'), 'result overlay must render both players as a versus pair');
+  assert(ctx.texts.includes('再来一局'), 'result overlay must render the rematch action');
+  assert(ctx.texts.includes('返回首页'), 'result overlay must render the home action');
+  assert(input.hitAreas.length === 2, 'result overlay must expose only its two actions');
+
+  const animatingInput = new InputManager();
+  drawResultOverlay(createContextMock(), animatingInput, {
+    width: 375,
+    height: 667,
+    safeTop: 64,
+    progress: 0.5,
+    presentation: {
+      badge: '负',
+      badgeFill: '#A83232',
+      title: '本局惜败',
+      subtitle: '调整思路，再来一盘',
+      color: '#A83232',
+      note: '下一局重新来过',
+    },
+    players: [
+      { nickname: '黑棋', label: '黑棋 · 先手', piece: 'black' },
+      { nickname: '白棋', label: '白棋 · 后手', piece: 'white', isWinner: true },
+    ],
+    primaryAction: { text: '再来一局', onTap() {} },
+    secondaryAction: { text: '返回首页', onTap() {} },
+  });
+  assert(animatingInput.hitAreas.length === 0,
+    'result actions must stay locked during the entrance animation');
+}
+
+function verifyLocalResultUsesOverlay() {
+  const runtime = {
+    width: 375,
+    height: 667,
+    canvas: {},
+    wx: createWxMock(),
+    manager: {
+      render() {},
+      go() {},
+    },
+  };
+  const scene = new LocalGameScene(runtime);
+  scene.gameOver = true;
+  scene.resultText = '黑棋获胜';
+  scene.resultReveal.show();
+
+  const ctx = createContextMock();
+  const input = new InputManager();
+  scene.render(ctx, input);
+  assert(ctx.texts.includes('黑棋获胜'),
+    'local match must present its result in the full-screen overlay');
+  assert(ctx.texts.includes('胜'),
+    'local match result overlay must include the Chinese seal badge');
+  assert(input.hitAreas.length === 2,
+    'finished local match must expose only rematch and home actions');
 }
 
 function verifyRuntimeButtonGesture() {
@@ -733,6 +890,44 @@ function verifyHostReturnsToWaitingWhenGuestLeaves() {
   assert(transitions[0].params.role === 'host', 'host role must be preserved while waiting');
 }
 
+async function verifyWaitingHostPollingFallback() {
+  const transitions = [];
+  let roomStatus = 'waiting';
+  const scene = new WaitRoomScene({
+    cloud: {
+      getRoom() {
+        return Promise.resolve({ status: roomStatus });
+      },
+      watchRoom() {
+        return { close() {} };
+      },
+    },
+    manager: {
+      go(name, params) {
+        transitions.push({ name, params });
+      },
+      render() {},
+    },
+  }, {
+    roomId: '123456',
+    role: 'host',
+    color: 'black',
+  });
+
+  scene.onEnter();
+  await flush();
+  assert(scene.pollTimer !== null,
+    'waiting room must keep a lightweight poll fallback when the realtime watcher stays silent');
+
+  roomStatus = 'playing';
+  await scene.loadRoom();
+  scene.applyRoom({ status: 'playing' });
+  assert(transitions.length === 1, 'watch and poll racing must enter the match exactly once');
+  assert(transitions[0].name === 'onlineGame',
+    'poll fallback must move the host into OnlineGameScene after the guest joins');
+  scene.onExit();
+}
+
 async function verifyCopyFeedback(SceneType, params, label) {
   const toasts = [];
   let copiedText = '';
@@ -789,7 +984,10 @@ async function verifyCopyFailureFeedback() {
 
 async function main() {
   verifyRuntimeBoot();
+  verifyForegroundCanvasRecovery();
   verifyButtonReleaseSemantics();
+  verifyResultOverlayLayout();
+  verifyLocalResultUsesOverlay();
   verifyRuntimeButtonGesture();
   await verifyWeChatLogin();
   await verifyIncompleteProfileIsNotMarkedComplete();
@@ -807,6 +1005,7 @@ async function main() {
   verifySafeAreaAvoidsCapsule();
   await verifyStaleJoinCannotChangeScene();
   verifyHostReturnsToWaitingWhenGuestLeaves();
+  await verifyWaitingHostPollingFallback();
   verifyRematchAndDepartureViewState();
   await verifyCopyFeedback(CreateRoomScene, {}, 'create room scene');
   await verifyCopyFeedback(WaitRoomScene, {

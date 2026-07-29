@@ -23,15 +23,21 @@ function verifyJson(file) {
 function verifySourceGuards() {
   const gameEntry = read('game.js');
   const runtimeSource = read('game/runtime.js');
+  const sceneManagerSource = read('game/core/sceneManager.js');
   const inputSource = read('game/core/inputManager.js');
   const buttonSource = read('game/renderers/buttonRenderer.js');
+  const themeSource = read('game/design/theme.js');
+  const boardSource = read('game/renderers/boardRenderer.js');
+  const resultOverlaySource = read('game/renderers/resultOverlayRenderer.js');
   const joinSource = read('game/scenes/joinRoomScene.js');
   const shareSource = read('utils/share.js');
   const roomServiceSource = read('services/roomService.js');
   const playerSessionSource = read('utils/playerSession.js');
   const profileSource = read('game/scenes/profileScene.js');
   const homeSource = read('game/scenes/homeScene.js');
+  const localSource = read('game/scenes/localGameScene.js');
   const onlineSource = read('game/scenes/onlineGameScene.js');
+  const waitSource = read('game/scenes/waitRoomScene.js');
   const safeAreaSource = read('utils/safeArea.js');
   const cloudSource = read('cloudfunctions/roomAction/index.js');
   const permissionDoc = read('docs/DATABASE_PERMISSIONS.md');
@@ -46,9 +52,25 @@ function verifySourceGuards() {
   assert(runtimeSource.includes('wxApi.onTouchMove'), 'runtime must register touch move input');
   assert(runtimeSource.includes('wxApi.onTouchEnd'), 'runtime must register touch end input');
   assert(runtimeSource.includes('wxApi.onTouchCancel'), 'runtime must register touch cancel input');
+  assert(runtimeSource.includes('wxApi.onHide'), 'runtime must suspend scenes while backgrounded');
+  assert(sceneManagerSource.includes('redrawAfterForeground'),
+    'runtime must repaint Canvas after its foreground surface is restored');
   assert(inputSource.includes('handleTouchEnd'), 'buttons must activate on touch release');
   assert(inputSource.includes('handleTouchCancel'), 'buttons must support touch cancellation');
   assert(buttonSource.includes('input.isPressed'), 'buttons must render pressed feedback');
+  assert(themeSource.includes("background: '#F7F4EE'"), 'release theme must use the paper background');
+  assert(themeSource.includes("jade: '#14382B'"), 'release theme must use the dark jade primary');
+  assert(themeSource.includes("danger: '#A83232'"), 'release theme must use the vermilion accent');
+  assert(themeSource.includes("board: '#D2A866'"), 'release theme must use the matte board color');
+  assert(boardSource.includes('COLORS.boardLine'), 'board must use the unified wood grid color');
+  assert(resultOverlaySource.includes('drawResultOverlay'),
+    'finished matches must use the reusable full-screen result overlay');
+  assert(resultOverlaySource.includes('createResultReveal'),
+    'result overlay must preserve the final board before its entrance animation');
+  assert(localSource.includes('drawResultOverlay'),
+    'local matches must use the shared full-screen result overlay');
+  assert(onlineSource.includes('drawResultOverlay'),
+    'friend matches must use the shared full-screen result overlay');
   assert(joinSource.includes('autoFillFromClipboard'), 'join scene must automatically detect a copied room id');
   assert(!joinSource.includes('一键粘贴房间号'), 'join scene must not require a manual paste button');
   assert(joinSource.includes('if (digit) ctx.fillText'), 'join scene must render truly empty room-id slots');
@@ -73,6 +95,10 @@ function verifySourceGuards() {
   assert(onlineSource.includes('restartRoom'), 'online scene must support another round');
   assert(onlineSource.includes('confirmSurrender'), 'online scene must confirm surrender before ending a round');
   assert(onlineSource.includes('renderPlayerCards'), 'online scene must render both versus player cards');
+  assert(onlineSource.includes('drawFittedPlayerName'),
+    'online player header must fit complete nicknames instead of fixed truncation');
+  assert(waitSource.includes('startPolling'),
+    'waiting host must have a polling fallback when realtime room watch stays silent');
   assert(onlineSource.includes("'⚑ 投降'"), 'surrender control must have a visible Chinese label');
   assert(homeSource.includes('getContentTop'), 'home scene must respect the WeChat capsule safe area');
   assert(profileSource.includes('getContentTop'), 'profile scene must respect the WeChat capsule safe area');

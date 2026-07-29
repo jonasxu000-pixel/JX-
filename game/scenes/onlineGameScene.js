@@ -3,7 +3,11 @@ const onlineGameState = require('../../utils/onlineGameState');
 const boardRenderer = require('../renderers/boardRenderer');
 const { drawButton } = require('../renderers/buttonRenderer');
 const { drawLabel } = require('../renderers/textRenderer');
-const { drawCard, drawPill } = require('../renderers/cardRenderer');
+const { drawPill, roundedRectPath } = require('../renderers/cardRenderer');
+const {
+  createResultReveal,
+  drawResultOverlay,
+} = require('../renderers/resultOverlayRenderer');
 const { drawAvatar } = require('../renderers/avatarRenderer');
 const { COLORS } = require('../design/theme');
 const { getContentTop } = require('../../utils/safeArea');
@@ -37,6 +41,7 @@ class OnlineGameScene {
     this.localPlayer = getStoredPlayer(runtime.wx);
     this.hostPlayer = createDisplayPlayer(null, '黑棋棋手');
     this.guestPlayer = createDisplayPlayer(null, '白棋棋手');
+    this.resultReveal = createResultReveal(runtime, () => runtime.manager.render());
   }
 
   onEnter() {
@@ -51,10 +56,17 @@ class OnlineGameScene {
     this.startWatch();
   }
 
+  onHide() {
+    this.active = false;
+    this.clearWatch();
+    this.clearRestart();
+  }
+
   onExit() {
     this.active = false;
     this.clearWatch();
     this.clearRestart();
+    this.resultReveal.dispose();
   }
 
   loadRoom() {
@@ -97,6 +109,7 @@ class OnlineGameScene {
       return;
     }
 
+    const wasShowingResult = this.shouldShowResult;
     const viewState = onlineGameState.deriveOnlineGameState(roomData, this.role);
     this.currentPlayer = viewState.currentPlayer;
     this.statusText = viewState.statusText;
@@ -119,6 +132,12 @@ class OnlineGameScene {
     if (roomData && Array.isArray(roomData.board)) {
       this.board = normalizeBoard(roomData.board);
       this.lastMove = roomData.lastMove || null;
+    }
+
+    if (this.shouldShowResult && !wasShowingResult) {
+      this.resultReveal.show();
+    } else if (!this.shouldShowResult && wasShowingResult) {
+      this.resultReveal.hide();
     }
 
     this.runtime.manager.render();
@@ -147,16 +166,12 @@ class OnlineGameScene {
   render(ctx, input) {
     const { width, height } = this.runtime;
     const safeTop = getContentTop(this.runtime.wx);
-    const statusY = safeTop + 110;
-    const boardTop = safeTop + 160;
+    const statusY = safeTop + 94;
+    const boardTop = safeTop + 144;
     const maxBoardSize = height - boardTop - 130;
     this.boardRect = boardRenderer.getBoardRect(width, boardTop, maxBoardSize);
 
-    drawLabel(ctx, `好友房 ${this.roomId}`, width / 2, safeTop + 10, 'center', {
-      bold: true,
-      size: 14,
-      color: COLORS.inkMuted,
-    });
+    drawRoomHeading(ctx, `好友房 ${this.roomId}`, width / 2, safeTop + 10);
     this.renderPlayerCards(ctx, safeTop);
 
     drawPill(ctx, {
@@ -183,9 +198,7 @@ class OnlineGameScene {
     }
     boardRenderer.drawBoard(ctx, this.board, this.lastMove, this.boardRect);
 
-    if (this.shouldShowResult) {
-      this.renderResultActions(ctx, input);
-    } else {
+    if (!this.shouldShowResult) {
       drawButton(ctx, input, {
         x: (width - 240) / 2,
         y: this.boardRect.y + this.boardRect.height + 24,
@@ -194,6 +207,28 @@ class OnlineGameScene {
         text: '退出本局',
         variant: 'ghost',
         onTap: () => this.leaveToHome(),
+      });
+    }
+
+    if (this.shouldShowResult && this.resultReveal.isVisible()) {
+      drawResultOverlay(ctx, input, {
+        width,
+        height,
+        safeTop,
+        progress: this.resultReveal.getProgress(),
+        presentation: this.getResultPresentation(),
+        players: this.getResultPlayers(),
+        wxApi: this.runtime.wx,
+        onAvatarReady: () => this.runtime.manager.render(),
+        primaryAction: {
+          text: this.getRestartButtonText(),
+          disabled: this.restartSubmitting || this.restartReady,
+          onTap: () => this.restartRoom(),
+        },
+        secondaryAction: {
+          text: '返回首页',
+          onTap: () => this.leaveToHome(),
+        },
       });
     }
   }
@@ -208,27 +243,31 @@ class OnlineGameScene {
 
   renderPlayerCards(ctx, safeTop) {
     const { width, manager } = this.runtime;
-    const gap = 12;
-    const cardWidth = (width - 44) / 2;
-    const y = safeTop + 26;
+    const centerGap = 18;
+    const sidePadding = 10;
+    const cardWidth = (width - sidePadding * 2 - centerGap) / 2;
+    const y = safeTop + 24;
     this.renderPlayerCard(ctx, {
-      x: 16,
+      x: sidePadding,
       y,
       width: cardWidth,
       player: this.hostPlayer,
       role: 'host',
       label: '黑棋 · 先手',
       manager,
+      align: 'left',
     });
     this.renderPlayerCard(ctx, {
-      x: 16 + cardWidth + gap,
+      x: sidePadding + cardWidth + centerGap,
       y,
       width: cardWidth,
       player: this.guestPlayer,
       role: 'guest',
       label: '白棋 · 后手',
       manager,
+      align: 'right',
     });
+    drawDuelMedallion(ctx, width / 2, y + 29);
   }
 
   renderPlayerCard(ctx, options) {
@@ -240,125 +279,135 @@ class OnlineGameScene {
       role,
       label,
       manager,
+      align,
     } = options;
     const isSelf = role === this.role;
     const isActive = !this.gameOver
       && ((this.currentPlayer === board.BLACK && role === 'host')
         || (this.currentPlayer === board.WHITE && role === 'guest'));
-    drawCard(ctx, {
-      x,
-      y,
-      width,
-      height: 72,
-      radius: 16,
-      fill: isActive ? '#EEF7F2' : COLORS.surface,
-      stroke: isActive ? '#9BC7B3' : COLORS.line,
-      shadow: false,
+    const isLeft = align === 'left';
+    const avatarSize = 38;
+    const avatarX = isLeft ? x + 1 : x + width - avatarSize - 1;
+    const bodyX = isLeft ? x + 20 : x;
+    const bodyWidth = width - 20;
+    drawPlayerRibbon(ctx, {
+      x: bodyX,
+      y: y + 4,
+      width: bodyWidth,
+      height: 50,
+      isActive,
+      align,
     });
-    drawAvatar(ctx, this.runtime.wx, player, x + 10, y + 14, 44, () => manager.render());
-    drawLabel(ctx, formatPlayerName(player.nickname), x + 62, y + 25, 'left', {
-      bold: true,
-      size: 14,
-      color: COLORS.ink,
-    });
-    drawPlayerStone(ctx, x + 67, y + 49, role);
+    if (isActive) drawAvatarHalo(ctx, avatarX + avatarSize / 2, y + 29, 22);
+    drawAvatar(ctx, this.runtime.wx, player, avatarX, y + 10, avatarSize, () => manager.render());
+
+    const textX = isLeft ? x + 45 : x + width - 45;
+    const textAlign = isLeft ? 'left' : 'right';
+    drawFittedPlayerName(ctx, player.nickname, textX, y + 20, width - 48, textAlign);
+    const stoneX = isLeft ? textX + 5 : textX - 5;
+    drawPlayerStone(ctx, stoneX, y + 42, role);
     const selfLabel = role === 'host' ? '黑棋先手 · 我' : '白棋后手 · 我';
-    drawLabel(ctx, isSelf ? selfLabel : label, x + 78, y + 49, 'left', {
+    drawLabel(ctx, isSelf ? selfLabel : label, isLeft ? textX + 16 : textX - 16, y + 42, textAlign, {
       size: 11,
       color: isActive ? COLORS.jade : COLORS.inkMuted,
     });
-  }
-
-  renderResultActions(ctx, input) {
-    const { width } = this.runtime;
-    const cardY = this.boardRect.y + this.boardRect.height + 14;
-    const y = cardY + 62;
-    const presentation = this.getResultPresentation();
-    drawCard(ctx, {
-      x: 16,
-      y: cardY,
-      width: width - 32,
-      height: 112,
-      fill: presentation.fill,
-      stroke: presentation.stroke,
-    });
-    drawLabel(ctx, presentation.title, width / 2, cardY + 28, 'center', {
-      bold: true,
-      size: 17,
-      color: presentation.color,
-    });
-    drawLabel(ctx, presentation.subtitle, width / 2, cardY + 50, 'center', {
-      size: 12,
-      color: COLORS.inkMuted,
-    });
-
-    drawButton(ctx, input, {
-      x: 24,
-      y,
-      width: (width - 64) / 2,
-      height: 46,
-      text: this.restartSubmitting
-        ? '正在确认…'
-        : (this.restartReady ? '已准备，等待对手' : (this.opponentRestartReady ? '同意再来一局' : '再来一局')),
-      disabled: this.restartSubmitting || this.restartReady,
-      onTap: () => this.restartRoom(),
-    });
-
-    drawButton(ctx, input, {
-      x: 40 + (width - 64) / 2,
-      y,
-      width: (width - 64) / 2,
-      height: 46,
-      text: '返回首页',
-      variant: 'ghost',
-      onTap: () => this.leaveToHome(),
-    });
+    if (isActive) {
+      drawTurnMarker(ctx, isLeft ? x + width - 5 : x + 5, y + 29);
+    }
   }
 
   getResultPresentation() {
     if (this.resultText === '对手投降，你获胜') {
       return {
-        title: '对手认输，本局你获胜',
-        subtitle: this.getRestartSubtitle('胜负已定，邀请对手再战一局'),
+        badge: '胜',
+        badgeFill: COLORS.jade,
+        title: '你获胜',
+        subtitle: '对手已投降',
         color: COLORS.jade,
-        fill: '#EFF7F2',
-        stroke: '#CDE3D5',
+        note: this.getRestartSubtitle('本局已结束，可邀请对手再战'),
       };
     }
     if (this.resultText === '你已投降') {
       return {
-        title: '你已投降，本局结束',
-        subtitle: this.getRestartSubtitle('调整思路，下一局重新来过'),
+        badge: '负',
+        badgeFill: COLORS.danger,
+        title: '你已投降',
+        subtitle: '本局已结束',
         color: COLORS.danger,
-        fill: '#FBF1EE',
-        stroke: '#EBCFC7',
+        note: this.getRestartSubtitle('调整思路，再来一盘'),
+        noteFill: COLORS.dangerSoft,
+        noteColor: COLORS.danger,
       };
     }
     if (this.resultText === '你获胜') {
       return {
-        title: '漂亮！你赢下了这一局',
-        subtitle: this.getRestartSubtitle('棋逢对手，不妨再来一盘'),
+        badge: '胜',
+        badgeFill: COLORS.jade,
+        title: '你获胜',
+        subtitle: '漂亮，这一局拿下了',
         color: COLORS.jade,
-        fill: '#EFF7F2',
-        stroke: '#CDE3D5',
+        note: this.getRestartSubtitle('棋逢对手，不妨再来一盘'),
       };
     }
     if (this.resultText === '对手获胜') {
       return {
-        title: '这一局惜败，再来一盘吧',
-        subtitle: this.getRestartSubtitle('复盘一手，下一局扳回来'),
+        badge: '负',
+        badgeFill: COLORS.danger,
+        title: '本局惜败',
+        subtitle: '调整思路，再来一盘',
         color: COLORS.danger,
-        fill: '#FBF1EE',
-        stroke: '#EBCFC7',
+        note: this.getRestartSubtitle('下一局重新来过'),
+        noteFill: COLORS.dangerSoft,
+        noteColor: COLORS.danger,
       };
     }
     return {
-      title: '势均力敌，本局和棋',
-      subtitle: this.getRestartSubtitle('难分高下，再战一局见真章'),
-      color: '#79551D',
-      fill: '#FBF5E8',
-      stroke: '#E8D7B6',
+      badge: '和',
+      badgeFill: COLORS.gold,
+      title: '本局和棋',
+      subtitle: '势均力敌',
+      color: '#765622',
+      note: this.getRestartSubtitle('难分高下，再战一局'),
+      noteFill: COLORS.goldSoft,
+      noteColor: '#765622',
     };
+  }
+
+  getResultPlayers() {
+    const winnerRole = this.getWinnerRole();
+    return [
+      {
+        player: this.hostPlayer,
+        nickname: this.hostPlayer.nickname,
+        label: '黑棋 · 先手',
+        isSelf: this.role === 'host',
+        isWinner: winnerRole === 'host',
+        piece: 'black',
+      },
+      {
+        player: this.guestPlayer,
+        nickname: this.guestPlayer.nickname,
+        label: '白棋 · 后手',
+        isSelf: this.role === 'guest',
+        isWinner: winnerRole === 'guest',
+        piece: 'white',
+      },
+    ];
+  }
+
+  getWinnerRole() {
+    if (this.resultText === '和棋') return null;
+    if (this.resultText === '你获胜' || this.resultText === '对手投降，你获胜') {
+      return this.role;
+    }
+    return this.role === 'host' ? 'guest' : 'host';
+  }
+
+  getRestartButtonText() {
+    if (this.restartSubmitting) return '正在确认…';
+    if (this.restartReady) return '已准备，等待对手';
+    if (this.opponentRestartReady) return '同意再来一局';
+    return '再来一局';
   }
 
   getRestartSubtitle(defaultText) {
@@ -477,11 +526,6 @@ function createDisplayPlayer(roomPlayer, fallbackNickname) {
   };
 }
 
-function formatPlayerName(nickname) {
-  const name = String(nickname || '棋友').trim();
-  return name.length > 6 ? `${name.slice(0, 6)}…` : name;
-}
-
 function drawPlayerStone(ctx, x, y, role) {
   ctx.save();
   ctx.beginPath();
@@ -491,6 +535,122 @@ function drawPlayerStone(ctx, x, y, role) {
   ctx.strokeStyle = role === 'host' ? '#0C0F0E' : '#B8BFBB';
   ctx.lineWidth = 1;
   ctx.stroke();
+  ctx.restore();
+}
+
+function drawPlayerRibbon(ctx, options) {
+  const {
+    x,
+    y,
+    width,
+    height,
+    isActive,
+    align,
+  } = options;
+  ctx.save();
+  roundedRectPath(ctx, x, y, width, height, 18);
+  ctx.fillStyle = isActive ? COLORS.jadeSoft : 'rgba(255, 255, 255, 0.82)';
+  ctx.fill();
+  ctx.strokeStyle = isActive ? 'rgba(20, 56, 43, 0.42)' : COLORS.line;
+  ctx.lineWidth = isActive ? 1.5 : 1;
+  ctx.stroke();
+
+  if (isActive) {
+    ctx.beginPath();
+    const fromX = align === 'left' ? x + 18 : x + width - 18;
+    const toX = align === 'left' ? x + width - 10 : x + 10;
+    ctx.moveTo(fromX, y + height);
+    ctx.lineTo(toX, y + height);
+    ctx.strokeStyle = COLORS.jade;
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawAvatarHalo(ctx, x, y, radius) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.strokeStyle = COLORS.jade;
+  ctx.lineWidth = 2;
+  ctx.shadowColor = 'rgba(20, 56, 43, 0.28)';
+  ctx.shadowBlur = 8;
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawFittedPlayerName(ctx, nickname, x, y, maxWidth, align) {
+  const name = String(nickname || '棋友').trim() || '棋友';
+  const family = '"PingFang SC", "Microsoft YaHei", sans-serif';
+  let fontSize = 15;
+  let measuredWidth = measureTextWidth(ctx, name, fontSize);
+  while (fontSize > 11 && measuredWidth > maxWidth) {
+    fontSize -= 1;
+    measuredWidth = measureTextWidth(ctx, name, fontSize);
+  }
+  const horizontalScale = measuredWidth > maxWidth ? maxWidth / measuredWidth : 1;
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(horizontalScale, 1);
+  ctx.fillStyle = COLORS.ink;
+  ctx.font = `700 ${fontSize}px ${family}`;
+  ctx.textAlign = align;
+  ctx.textBaseline = 'middle';
+  ctx.fillText(name, 0, 0);
+  ctx.restore();
+}
+
+function measureTextWidth(ctx, text, size) {
+  ctx.save();
+  ctx.font = `700 ${size}px "PingFang SC", "Microsoft YaHei", sans-serif`;
+  const width = typeof ctx.measureText === 'function'
+    ? ctx.measureText(text).width
+    : String(text).length * size;
+  ctx.restore();
+  return Math.max(width, 1);
+}
+
+function drawDuelMedallion(ctx, x, y) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x, y, 16, 0, Math.PI * 2);
+  ctx.fillStyle = COLORS.surface;
+  ctx.shadowColor = 'rgba(83, 61, 25, 0.12)';
+  ctx.shadowBlur = 7;
+  ctx.fill();
+  ctx.shadowColor = 'transparent';
+  ctx.strokeStyle = COLORS.gold;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.fillStyle = COLORS.gold;
+  ctx.font = '800 9px "Arial Narrow", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('VS', x, y);
+  ctx.restore();
+}
+
+function drawRoomHeading(ctx, text, x, y) {
+  ctx.save();
+  ctx.fillStyle = COLORS.inkMuted;
+  ctx.font = '700 14px ui-monospace, "SFMono-Regular", Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, x, y);
+  ctx.restore();
+}
+
+function drawTurnMarker(ctx, x, y) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x, y, 4, 0, Math.PI * 2);
+  ctx.fillStyle = COLORS.jade;
+  ctx.shadowColor = 'rgba(20, 56, 43, 0.25)';
+  ctx.shadowBlur = 5;
+  ctx.fill();
   ctx.restore();
 }
 

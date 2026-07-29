@@ -8,14 +8,14 @@ const VARIANTS = {
     stroke: COLORS.jade,
   },
   secondary: {
-    fill: COLORS.blueSoft,
-    textColor: COLORS.blue,
-    stroke: '#C8DAE7',
+    fill: COLORS.surface,
+    textColor: COLORS.jade,
+    stroke: '#7C9A8D',
   },
   gold: {
-    fill: COLORS.goldSoft,
-    textColor: '#79551D',
-    stroke: '#E7D2A8',
+    fill: COLORS.surfaceMuted,
+    textColor: COLORS.inkMuted,
+    stroke: COLORS.line,
   },
   ghost: {
     fill: COLORS.surface,
@@ -23,9 +23,9 @@ const VARIANTS = {
     stroke: COLORS.line,
   },
   danger: {
-    fill: '#F5E4DF',
+    fill: COLORS.dangerSoft,
     textColor: COLORS.danger,
-    stroke: '#E9CBC3',
+    stroke: '#E4C0C0',
   },
 };
 
@@ -56,9 +56,9 @@ function drawButton(ctx, input, options) {
   ctx.save();
   ctx.globalAlpha = disabled ? 0.48 : (pressed ? 0.84 : 1);
   if (!disabled && !pressed && variant === 'primary') {
-    ctx.shadowColor = 'rgba(37, 107, 82, 0.2)';
-    ctx.shadowBlur = 12;
-    ctx.shadowOffsetY = 4;
+    ctx.shadowColor = 'rgba(20, 56, 43, 0.2)';
+    ctx.shadowBlur = 10;
+    ctx.shadowOffsetY = 3;
   }
   roundedRectPath(ctx, x, drawY, width, height, radius);
   ctx.fillStyle = resolvedFill;
@@ -71,7 +71,7 @@ function drawButton(ctx, input, options) {
   }
 
   ctx.fillStyle = resolvedText;
-  ctx.font = `bold ${fontSize}px sans-serif`;
+  ctx.font = `700 ${fontSize}px "PingFang SC", "Microsoft YaHei", sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(text, x + width / 2, drawY + height / 2);

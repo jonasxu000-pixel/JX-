@@ -23,14 +23,15 @@ function drawCard(ctx, options) {
     radius = LAYOUT.cardRadius,
     fill = COLORS.surface,
     stroke = COLORS.line,
+    strokeWidth = 1,
     shadow = true,
   } = options;
 
   ctx.save();
   if (shadow) {
-    ctx.shadowColor = 'rgba(31, 43, 39, 0.09)';
-    ctx.shadowBlur = 18;
-    ctx.shadowOffsetY = 6;
+    ctx.shadowColor = 'rgba(20, 56, 43, 0.08)';
+    ctx.shadowBlur = 12;
+    ctx.shadowOffsetY = 4;
   }
   roundedRectPath(ctx, x, y, width, height, radius);
   ctx.fillStyle = fill;
@@ -38,7 +39,7 @@ function drawCard(ctx, options) {
   ctx.shadowColor = 'transparent';
   if (stroke) {
     ctx.strokeStyle = stroke;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = strokeWidth;
     ctx.stroke();
   }
   ctx.restore();
@@ -53,14 +54,20 @@ function drawPill(ctx, options) {
     text,
     fill = COLORS.jadeSoft,
     color = COLORS.jade,
+    stroke = null,
   } = options;
 
   ctx.save();
   roundedRectPath(ctx, x, y, width, height, height / 2);
   ctx.fillStyle = fill;
   ctx.fill();
+  if (stroke) {
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
   ctx.fillStyle = color;
-  ctx.font = 'bold 13px sans-serif';
+  ctx.font = '600 13px "PingFang SC", "Microsoft YaHei", sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(text, x + width / 2, y + height / 2);
@@ -78,13 +85,13 @@ function drawRoomCodeCard(ctx, options) {
   });
 
   ctx.fillStyle = COLORS.inkMuted;
-  ctx.font = '13px sans-serif';
+  ctx.font = '13px "PingFang SC", "Microsoft YaHei", sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(eyebrow, x + width / 2, y + 28);
 
   ctx.fillStyle = COLORS.ink;
-  ctx.font = 'bold 42px sans-serif';
+  ctx.font = '700 42px ui-monospace, "SFMono-Regular", Consolas, monospace';
   ctx.fillText(roomId || '······', x + width / 2, y + 72);
 
   ctx.fillStyle = COLORS.gold;
@@ -100,7 +107,7 @@ function drawAppBackground(ctx, width, height) {
   ctx.fillRect(0, 0, width, height);
 
   ctx.save();
-  ctx.globalAlpha = 0.45;
+  ctx.globalAlpha = 0.28;
   ctx.fillStyle = COLORS.jadeSoft;
   ctx.beginPath();
   ctx.arc(width + 16, 28, 96, 0, Math.PI * 2);

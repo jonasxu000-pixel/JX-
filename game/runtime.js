@@ -72,11 +72,16 @@ function createRuntime(wxApi) {
       wxApi.onShow(options => {
         const roomId = getSharedRoomId(options);
         if (roomId) {
+          manager.wake();
           manager.go('joinRoom', { roomId, source: 'share' });
+          manager.redrawAfterForeground();
           return;
         }
         manager.resume();
       });
+    }
+    if (wxApi.onHide) {
+      wxApi.onHide(() => manager.suspend());
     }
 
     let launchOptions = {};

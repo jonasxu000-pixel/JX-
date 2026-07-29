@@ -1,5 +1,6 @@
 const board = require('../../utils/board');
 const { COLORS } = require('../design/theme');
+const { roundedRectPath } = require('./cardRenderer');
 
 function getBoardRect(width, top, maxSize = 420) {
   const size = Math.min(width - 32, 420, Math.max(220, maxSize));
@@ -19,19 +20,21 @@ function getConfig(rect) {
 
 function drawBoard(ctx, boardState, lastMove, rect) {
   const { padding, cellSize } = getConfig(rect);
+  const radius = Math.min(8, rect.width * 0.025);
 
   ctx.save();
-  ctx.shadowColor = 'rgba(31, 43, 39, 0.16)';
-  ctx.shadowBlur = 14;
-  ctx.shadowOffsetY = 5;
-  ctx.fillStyle = '#E7C77F';
-  ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+  ctx.shadowColor = 'rgba(58, 39, 14, 0.18)';
+  ctx.shadowBlur = 12;
+  ctx.shadowOffsetY = 4;
+  roundedRectPath(ctx, rect.x, rect.y, rect.width, rect.height, radius);
+  ctx.fillStyle = COLORS.board;
+  ctx.fill();
   ctx.shadowColor = 'transparent';
-  ctx.strokeStyle = COLORS.gold;
+  ctx.strokeStyle = '#B98B43';
   ctx.lineWidth = 1;
-  ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+  ctx.stroke();
 
-  ctx.strokeStyle = '#8b7355';
+  ctx.strokeStyle = COLORS.boardLine;
   ctx.lineWidth = 1;
   ctx.beginPath();
   for (let i = 0; i < board.BOARD_SIZE; i += 1) {
@@ -43,7 +46,7 @@ function drawBoard(ctx, boardState, lastMove, rect) {
   }
   ctx.stroke();
 
-  ctx.fillStyle = '#8b7355';
+  ctx.fillStyle = COLORS.boardLine;
   [[3, 3], [3, 11], [11, 3], [11, 11], [7, 7]].forEach(([row, col]) => {
     ctx.beginPath();
     ctx.arc(rect.x + padding + col * cellSize, rect.y + padding + row * cellSize, 3, 0, Math.PI * 2);
@@ -61,8 +64,8 @@ function drawBoard(ctx, boardState, lastMove, rect) {
     const x = rect.x + padding + lastMove.col * cellSize;
     const y = rect.y + padding + lastMove.row * cellSize;
     ctx.beginPath();
-    ctx.arc(x, y, cellSize * 0.12, 0, Math.PI * 2);
-    ctx.fillStyle = '#e74c3c';
+    ctx.arc(x, y, Math.max(2.2, cellSize * 0.115), 0, Math.PI * 2);
+    ctx.fillStyle = COLORS.danger;
     ctx.fill();
   }
 
@@ -80,15 +83,25 @@ function drawPiece(ctx, rect, row, col, piece) {
   if (piece === board.BLACK) {
     const grad = ctx.createRadialGradient(x - 2, y - 2, 0, x, y, radius);
     grad.addColorStop(0, '#555555');
-    grad.addColorStop(1, '#111111');
+    grad.addColorStop(1, '#1A1A1A');
     ctx.fillStyle = grad;
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.32)';
   } else {
     const grad = ctx.createRadialGradient(x - 2, y - 2, 0, x, y, radius);
     grad.addColorStop(0, '#ffffff');
-    grad.addColorStop(1, '#cccccc');
+    grad.addColorStop(1, '#FAFAFA');
     ctx.fillStyle = grad;
+    ctx.shadowColor = 'rgba(255, 255, 255, 0.5)';
   }
+  ctx.shadowBlur = 5;
+  ctx.shadowOffsetY = 2;
   ctx.fill();
+  ctx.shadowColor = 'transparent';
+  if (piece === board.WHITE) {
+    ctx.strokeStyle = '#D8D8D4';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
 }
 
 function hitTest(x, y, rect) {

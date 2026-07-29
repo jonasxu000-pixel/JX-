@@ -29,6 +29,22 @@ class ProfileScene {
     this.refreshAuthorizedProfile();
   }
 
+  onResume() {
+    this.player = getStoredPlayer(this.runtime.wx);
+    if (this.privacyReady) {
+      this.createWeChatProfileButton();
+    } else {
+      this.preparePrivacyAuthorization();
+    }
+    this.refreshAuthorizedProfile();
+  }
+
+  onHide() {
+    this.clearKeyboardHandler();
+    this.destroyWeChatProfileButton();
+    if (this.runtime.wx.hideKeyboard) this.runtime.wx.hideKeyboard();
+  }
+
   onExit() {
     this.clearKeyboardHandler();
     this.destroyWeChatProfileButton();
@@ -58,7 +74,7 @@ class ProfileScene {
       width: 92,
       height: 26,
       text: this.player ? '微信已连接' : '尚未连接',
-      fill: this.player ? COLORS.jadeSoft : '#F5E4DF',
+      fill: this.player ? COLORS.jadeSoft : COLORS.dangerSoft,
       color: this.player ? COLORS.jade : COLORS.danger,
     });
     drawLabel(ctx, '好友对局中将展示此头像和昵称', 144, layout.cardY + 112, 'left', {

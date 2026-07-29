@@ -5,6 +5,8 @@ const { COLORS } = require('../design/theme');
 const { copyText, showToast } = require('../../utils/clipboard');
 const { shareRoom } = require('../../utils/share');
 
+const ROOM_POLL_INTERVAL = 1200;
+
 class WaitRoomScene {
   constructor(runtime, params) {
     this.runtime = runtime;
@@ -14,6 +16,9 @@ class WaitRoomScene {
     this.error = '';
     this.watcher = null;
     this.restartTimer = null;
+    this.pollTimer = null;
+    this.loadInFlight = false;
+    this.transitionStarted = false;
     this.active = false;
     this.copying = false;
     this.copyMessage = '';
@@ -21,24 +26,38 @@ class WaitRoomScene {
 
   onEnter() {
     this.active = true;
+    this.transitionStarted = false;
     this.loadRoom();
     this.startWatch();
+    this.startPolling();
   }
 
   onResume() {
     this.active = true;
+    this.transitionStarted = false;
     this.loadRoom();
     this.startWatch();
+    this.startPolling();
+  }
+
+  onHide() {
+    this.active = false;
+    this.clearWatch();
+    this.clearRestart();
+    this.clearPolling();
   }
 
   onExit() {
     this.active = false;
     this.clearWatch();
     this.clearRestart();
+    this.clearPolling();
   }
 
   loadRoom() {
-    this.runtime.cloud.getRoom(this.roomId)
+    if (this.loadInFlight) return Promise.resolve();
+    this.loadInFlight = true;
+    return this.runtime.cloud.getRoom(this.roomId)
       .then(roomData => {
         if (this.active) this.applyRoom(roomData);
       })
@@ -46,6 +65,9 @@ class WaitRoomScene {
         if (!this.active) return;
         this.error = err.message || '房间同步失败';
         this.runtime.manager.render();
+      })
+      .finally(() => {
+        this.loadInFlight = false;
       });
   }
 
@@ -72,7 +94,8 @@ class WaitRoomScene {
       return;
     }
 
-    if (roomData.status === 'playing') {
+    if (roomData.status === 'playing' && !this.transitionStarted) {
+      this.transitionStarted = true;
       this.runtime.manager.go('onlineGame', {
         roomId: this.roomId,
         role: this.role,
@@ -83,6 +106,20 @@ class WaitRoomScene {
 
     this.error = '';
     this.runtime.manager.render();
+  }
+
+  startPolling() {
+    this.clearPolling();
+    this.schedulePoll();
+  }
+
+  schedulePoll() {
+    if (!this.active || this.pollTimer) return;
+    this.pollTimer = setTimeout(() => {
+      this.pollTimer = null;
+      if (!this.active || this.transitionStarted) return;
+      this.loadRoom().finally(() => this.schedulePoll());
+    }, ROOM_POLL_INTERVAL);
   }
 
   scheduleRestart() {
@@ -106,10 +143,17 @@ class WaitRoomScene {
     this.restartTimer = null;
   }
 
+  clearPolling() {
+    if (!this.pollTimer) return;
+    clearTimeout(this.pollTimer);
+    this.pollTimer = null;
+  }
+
   leave() {
     this.active = false;
     this.clearWatch();
     this.clearRestart();
+    this.clearPolling();
     this.runtime.cloud.leaveRoom(this.roomId)
       .finally(() => this.runtime.manager.go('home'));
   }

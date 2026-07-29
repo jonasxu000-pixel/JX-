@@ -7,6 +7,9 @@ class SceneManager {
     this.input = new InputManager();
     this.sceneTypes = {};
     this.current = null;
+    this.suspended = false;
+    this.foregroundFrame = null;
+    this.foregroundTimer = null;
   }
 
   register(name, SceneType) {
@@ -110,11 +113,61 @@ class SceneManager {
   }
 
   resume() {
+    this.wake();
     this.input.handleTouchCancel();
     if (this.current && this.current.onResume) {
       this.current.onResume();
     }
     this.render();
+    this.redrawAfterForeground();
+  }
+
+  wake() {
+    this.suspended = false;
+  }
+
+  suspend() {
+    if (this.suspended) return;
+    this.suspended = true;
+    this.clearForegroundRedraw();
+    this.input.handleTouchCancel();
+    if (this.current && this.current.onHide) {
+      this.current.onHide();
+    }
+  }
+
+  redrawAfterForeground() {
+    this.clearForegroundRedraw();
+    const redraw = () => {
+      if (!this.suspended) this.render();
+    };
+    const { canvas } = this.runtime;
+
+    // 真机回前台时 Canvas 首帧可能仍未恢复；下一动画帧与短延时各补画一次。
+    if (canvas && typeof canvas.requestAnimationFrame === 'function') {
+      this.foregroundFrame = canvas.requestAnimationFrame(() => {
+        this.foregroundFrame = null;
+        redraw();
+      });
+    }
+    this.foregroundTimer = setTimeout(() => {
+      this.foregroundTimer = null;
+      redraw();
+    }, 80);
+  }
+
+  clearForegroundRedraw() {
+    const { canvas } = this.runtime;
+    if (this.foregroundFrame !== null
+      && canvas
+      && typeof canvas.cancelAnimationFrame === 'function') {
+      canvas.cancelAnimationFrame(this.foregroundFrame);
+    }
+    this.foregroundFrame = null;
+    if (this.foregroundTimer !== null) {
+      clearTimeout(this.foregroundTimer);
+      this.foregroundTimer = null;
+    }
   }
 }
 

@@ -29,6 +29,10 @@ class HomeScene {
     this.createWeChatLoginButton();
   }
 
+  onHide() {
+    this.destroyWeChatLoginButton();
+  }
+
   onExit() {
     this.destroyWeChatLoginButton();
   }
@@ -206,8 +210,9 @@ class HomeScene {
       width: 46,
       height: 32,
       text: '资料',
-      fill: COLORS.blueSoft,
-      color: COLORS.blue,
+      fill: COLORS.surface,
+      color: COLORS.jade,
+      stroke: '#7C9A8D',
     });
     input.addHitArea({
       x: 20,
