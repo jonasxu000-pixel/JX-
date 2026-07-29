@@ -115,7 +115,7 @@ class HomeScene {
       fill: COLORS.surface,
     });
     drawBrandStones(ctx, width / 2, layout.heroY + 34);
-    drawTitle(ctx, '你棋没我硬', width / 2, layout.heroY + 78);
+    drawTitle(ctx, '棋遇五子棋', width / 2, layout.heroY + 78);
     drawSubtitle(ctx, '好友联机五子棋 · 落子见真章', width / 2, layout.heroY + 110);
     drawPill(ctx, {
       x: width / 2 - 72,

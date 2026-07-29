@@ -7,7 +7,7 @@ function buildRoomSharePayload(roomId) {
   }
 
   return {
-    title: `来「你棋没我硬」和我下一局｜房间 ${normalized}`,
+    title: `来「棋遇五子棋」和我下一局｜房间 ${normalized}`,
     query: `roomId=${normalized}`,
   };
 }

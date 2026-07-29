@@ -741,7 +741,7 @@ function verifyHotSharedRoomEntry() {
 function verifyRoomShare() {
   const payload = buildRoomSharePayload('123456');
   assert(payload.query === 'roomId=123456', 'share payload must carry the room id query');
-  assert(payload.title.includes('你棋没我硬'), 'share payload must use the official game brand');
+  assert(payload.title.includes('棋遇五子棋'), 'share payload must use the official game brand');
 
   const wx = createWxMock();
   const scene = new WaitRoomScene({
@@ -782,7 +782,6 @@ function verifyTouchLayouts() {
     new ProfileScene(createLayoutRuntime(width, height)),
   ];
 
-  scenes[3].roomId = '123456';
   scenes[5].statusText = '轮到你落子（黑棋）';
   scenes[5].isMyTurn = true;
   scenes[5].boardLocked = false;
@@ -928,6 +927,110 @@ async function verifyWaitingHostPollingFallback() {
   scene.onExit();
 }
 
+async function verifyCreateRoomAutoEntersWaiting() {
+  const transitions = [];
+  const scene = new CreateRoomScene({
+    cloud: {
+      createRoom() {
+        return Promise.resolve('246810');
+      },
+      leaveRoom() {
+        return Promise.resolve();
+      },
+    },
+    manager: {
+      go(name, params) {
+        transitions.push({ name, params });
+      },
+      render() {},
+    },
+  });
+
+  scene.onEnter();
+  await flush();
+  await flush();
+
+  assert(transitions.length === 1, 'successful room creation must transition exactly once');
+  assert(transitions[0].name === 'waitRoom',
+    'successful room creation must enter WaitRoomScene without another button press');
+  assert(transitions[0].params.roomId === '246810',
+    'automatic waiting-room transition must preserve the created room id');
+  assert(transitions[0].params.role === 'host' && transitions[0].params.color === 'black',
+    'room creator must enter the waiting room as the black host');
+}
+
+async function verifyAbandonedCreateCleansRoom() {
+  let resolveCreate;
+  let cleanedRoomId = '';
+  const transitions = [];
+  const scene = new CreateRoomScene({
+    cloud: {
+      createRoom() {
+        return new Promise(resolve => {
+          resolveCreate = resolve;
+        });
+      },
+      leaveRoom(roomId) {
+        cleanedRoomId = roomId;
+        return Promise.resolve();
+      },
+    },
+    manager: {
+      go(name, params) {
+        transitions.push({ name, params });
+      },
+      render() {},
+    },
+  });
+
+  scene.onEnter();
+  scene.onExit();
+  resolveCreate('975310');
+  await flush();
+  await flush();
+
+  assert(transitions.length === 0,
+    'a stale create response must not pull the user away from the current scene');
+  assert(cleanedRoomId === '975310',
+    'a room created after the user leaves must be cleaned up instead of becoming orphaned');
+}
+
+async function verifyCreateFailureCanRetry() {
+  let attempts = 0;
+  const transitions = [];
+  const scene = new CreateRoomScene({
+    cloud: {
+      createRoom() {
+        attempts += 1;
+        if (attempts === 1) return Promise.reject(new Error('网络暂不可用'));
+        return Promise.resolve('112233');
+      },
+      leaveRoom() {
+        return Promise.resolve();
+      },
+    },
+    manager: {
+      go(name, params) {
+        transitions.push({ name, params });
+      },
+      render() {},
+    },
+  });
+
+  scene.onEnter();
+  await flush();
+  await flush();
+  assert(scene.error === '网络暂不可用', 'create failure must show its actionable error');
+  assert(!scene.loading, 'create failure must unlock the retry action');
+
+  scene.createRoom();
+  await flush();
+  await flush();
+  assert(attempts === 2, 'retry must issue one new room creation request');
+  assert(transitions.length === 1 && transitions[0].name === 'waitRoom',
+    'successful retry must automatically enter the waiting room');
+}
+
 async function verifyCopyFeedback(SceneType, params, label) {
   const toasts = [];
   let copiedText = '';
@@ -959,7 +1062,7 @@ async function verifyCopyFeedback(SceneType, params, label) {
 
 async function verifyCopyFailureFeedback() {
   const toasts = [];
-  const scene = new CreateRoomScene({
+  const scene = new WaitRoomScene({
     wx: {
       setClipboardData(options) {
         options.fail({ errMsg: 'clipboard denied' });
@@ -971,8 +1074,11 @@ async function verifyCopyFailureFeedback() {
     manager: {
       render() {},
     },
+  }, {
+    roomId: '123456',
+    role: 'host',
+    color: 'black',
   });
-  scene.roomId = '123456';
 
   scene.copyRoomId();
   await flush();
@@ -1006,8 +1112,10 @@ async function main() {
   await verifyStaleJoinCannotChangeScene();
   verifyHostReturnsToWaitingWhenGuestLeaves();
   await verifyWaitingHostPollingFallback();
+  await verifyCreateRoomAutoEntersWaiting();
+  await verifyAbandonedCreateCleansRoom();
+  await verifyCreateFailureCanRetry();
   verifyRematchAndDepartureViewState();
-  await verifyCopyFeedback(CreateRoomScene, {}, 'create room scene');
   await verifyCopyFeedback(WaitRoomScene, {
     roomId: '123456',
     role: 'host',

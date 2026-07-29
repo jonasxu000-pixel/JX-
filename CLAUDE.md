@@ -1,4 +1,4 @@
-# JX双人五子棋 - CLAUDE.md
+# 棋遇五子棋 - CLAUDE.md
 
 ## 项目目标
 

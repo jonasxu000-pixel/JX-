@@ -30,6 +30,7 @@ function verifySourceGuards() {
   const boardSource = read('game/renderers/boardRenderer.js');
   const resultOverlaySource = read('game/renderers/resultOverlayRenderer.js');
   const joinSource = read('game/scenes/joinRoomScene.js');
+  const createSource = read('game/scenes/createRoomScene.js');
   const shareSource = read('utils/share.js');
   const roomServiceSource = read('services/roomService.js');
   const playerSessionSource = read('utils/playerSession.js');
@@ -46,6 +47,8 @@ function verifySourceGuards() {
   const ignored = projectConfig.packOptions.ignore.map(item => `${item.type}:${item.value}`);
 
   assert(projectConfig.compileType === 'game', 'project must compile as a Mini Game');
+  assert(projectConfig.projectname === '棋遇五子棋',
+    'developer-tool project name must use the filing release brand');
   assert(gameEntry.includes("require('./game/runtime')"), 'game.js must boot the Canvas runtime');
   assert(runtimeSource.includes('wxApi.createCanvas()'), 'runtime must create a Mini Game Canvas');
   assert(runtimeSource.includes('wxApi.onTouchStart'), 'runtime must register touch start input');
@@ -78,6 +81,16 @@ function verifySourceGuards() {
   assert(runtimeSource.includes('getSharedRoomId'), 'runtime must accept room ids from share entry parameters');
   assert(shareSource.includes('wxApi.shareAppMessage'), 'room sharing must use the Mini Game share API');
   assert(shareSource.includes('query: `roomId='), 'room sharing must include a deep-link room id');
+  assert(shareSource.includes('棋遇五子棋'), 'room sharing must use the current release brand');
+  assert(homeSource.includes("'棋遇五子棋'"), 'home hero must use the current release brand');
+  assert(createSource.includes("manager.go('waitRoom'"),
+    'successful room creation must automatically enter the waiting room');
+  assert(createSource.includes('cleanupAbandonedRoom'),
+    'stale room creation must clean up its orphaned room');
+  assert(!createSource.includes('进入房间等待'),
+    'create scene must not require a redundant enter-waiting action');
+  assert(!createSource.includes('copyRoomId'),
+    'room number actions must live only in the waiting room');
   assert(roomServiceSource.includes('playerProfile'),
     'create and join room calls must publish the player display profile');
   assert(runtimeSource.includes("manager.register('home'"), 'runtime must register the authenticated home scene');
