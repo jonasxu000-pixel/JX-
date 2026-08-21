@@ -27,20 +27,21 @@ class JoinRoomScene {
 
   render(ctx, input) {
     const { width, manager } = this.runtime;
+    const layout = this.getLayout();
     const buttonWidth = Math.min(width - 64, 280);
     const x = (width - buttonWidth) / 2;
 
-    drawTitle(ctx, '加入好友房', width / 2, 52);
-    drawSubtitle(ctx, '确认房间号，和好友马上开局', width / 2, 84);
+    drawTitle(ctx, '加入好友房', width / 2, layout.titleY);
+    drawSubtitle(ctx, '确认房间号，和好友马上开局', width / 2, layout.subtitleY);
 
-    this.renderRoomIdSlots(ctx);
+    this.renderRoomIdSlots(ctx, layout);
 
-    this.renderKeypad(ctx, input);
+    this.renderKeypad(ctx, input, layout);
 
     if (this.error || this.feedback) {
       drawPill(ctx, {
         x: width / 2 - 126,
-        y: 426,
+        y: layout.feedbackY,
         width: 252,
         height: 30,
         text: this.error || this.feedback,
@@ -51,9 +52,9 @@ class JoinRoomScene {
 
     drawButton(ctx, input, {
       x,
-      y: 474,
+      y: layout.confirmY,
       width: buttonWidth,
-      height: 50,
+      height: layout.actionHeight,
       text: this.loading ? '正在加入...' : '确认加入房间',
       disabled: this.loading || this.roomId.length !== 6,
       onTap: () => this.joinRoom(),
@@ -61,27 +62,64 @@ class JoinRoomScene {
 
     drawButton(ctx, input, {
       x,
-      y: 538,
+      y: layout.backY,
       width: buttonWidth,
-      height: 50,
+      height: layout.actionHeight,
       text: '返回首页',
       variant: 'ghost',
       onTap: () => manager.go('home'),
     });
 
-    drawSubtitle(ctx, '已复制房间号时，进入本页会自动识别', width / 2, 620);
+    drawSubtitle(ctx, '已复制房间号时，进入本页会自动识别', width / 2, layout.footerY);
   }
 
-  renderRoomIdSlots(ctx) {
+  getLayout() {
+    if (this.runtime.height < 620) {
+      return {
+        titleY: 82,
+        subtitleY: 108,
+        cardY: 118,
+        cardHeight: 88,
+        slotY: 152,
+        slotHeight: 42,
+        keypadY: 214,
+        keypadStep: 40,
+        keyHeight: 38,
+        feedbackY: 378,
+        confirmY: 414,
+        backY: 466,
+        actionHeight: 44,
+        footerY: 538,
+      };
+    }
+    return {
+      titleY: 52,
+      subtitleY: 84,
+      cardY: 108,
+      cardHeight: 98,
+      slotY: 148,
+      slotHeight: 46,
+      keypadY: 226,
+      keypadStep: 48,
+      keyHeight: 40,
+      feedbackY: 426,
+      confirmY: 474,
+      backY: 538,
+      actionHeight: 50,
+      footerY: 620,
+    };
+  }
+
+  renderRoomIdSlots(ctx, layout) {
     const { width } = this.runtime;
     const cardX = 20;
-    const cardY = 108;
+    const cardY = layout.cardY;
     const cardWidth = width - 40;
     drawCard(ctx, {
       x: cardX,
       y: cardY,
       width: cardWidth,
-      height: 98,
+      height: layout.cardHeight,
     });
     drawLabel(ctx, '房间号（6 位数字）', cardX + 18, cardY + 24, 'left', {
       size: 12,
@@ -90,9 +128,9 @@ class JoinRoomScene {
 
     const gap = 7;
     const slotWidth = Math.min(42, (cardWidth - 36 - gap * 5) / 6);
-    const slotHeight = 46;
+    const slotHeight = layout.slotHeight;
     const startX = (width - slotWidth * 6 - gap * 5) / 2;
-    const y = 148;
+    const y = layout.slotY;
 
     for (let index = 0; index < 6; index += 1) {
       const digit = this.roomId[index] || '';
@@ -111,22 +149,22 @@ class JoinRoomScene {
     }
   }
 
-  renderKeypad(ctx, input) {
+  renderKeypad(ctx, input, layout) {
     const { width } = this.runtime;
     const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '退格', '0', '清空'];
     const keyWidth = Math.min(88, (width - 68) / 3);
     const gap = 10;
     const startX = (width - keyWidth * 3 - gap * 2) / 2;
-    const startY = 226;
+    const startY = layout.keypadY;
 
     keys.forEach((key, index) => {
       const col = index % 3;
       const row = Math.floor(index / 3);
       drawButton(ctx, input, {
         x: startX + col * (keyWidth + gap),
-        y: startY + row * 48,
+        y: startY + row * layout.keypadStep,
         width: keyWidth,
-        height: 40,
+        height: layout.keyHeight,
         text: key,
         variant: /^[0-9]$/.test(key) ? 'gold' : 'ghost',
         fontSize: /^[0-9]$/.test(key) ? 18 : 14,
@@ -183,6 +221,7 @@ class JoinRoomScene {
         if (!this.active) return;
         this.runtime.manager.go('waitRoom', {
           roomId: this.roomId,
+          viewId: result.viewId,
           role: result.role,
           color: result.color,
         });

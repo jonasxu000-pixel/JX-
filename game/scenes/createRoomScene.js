@@ -38,15 +38,16 @@ class CreateRoomScene {
     this.runtime.manager.render();
 
     this.runtime.cloud.createRoom()
-      .then(roomId => {
+      .then(room => {
         if (!this.active) {
-          this.cleanupAbandonedRoom(roomId);
+          this.cleanupAbandonedRoom(room && room.roomId);
           return;
         }
         this.runtime.manager.go('waitRoom', {
-          roomId,
-          role: 'host',
-          color: 'black',
+          roomId: room.roomId,
+          viewId: room.viewId,
+          role: room.role || 'host',
+          color: room.color || 'black',
         });
       })
       .catch(err => {

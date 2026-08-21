@@ -15,11 +15,12 @@ game/
     theme.js                    全局颜色、圆角和布局规范
   core/                         输入、云调用、场景管理
   renderers/                    棋盘、按钮、卡片、头像、文字绘制
-  scenes/                       首页、玩家资料、本机、创建、加入、等待、联机对战
+  scenes/                       首页、玩家资料、本机、人机、创建、加入、等待、联机对战
 services/
-  roomService.js                客户端房间云接口
+  roomService.js                客户端房间云接口与脱敏视图订阅
 utils/
   board.js                      棋盘与胜负基础规则
+  gomokuAi.js                   本地人机候选点、胜负优先与攻防评分
   onlineGameState.js            联机状态映射
   clipboard.js                  房间号复制、自动识别与 Toast 反馈
   share.js                      好友邀请参数、分享入口房间号解析
@@ -35,10 +36,23 @@ cloudfunctions/
 Canvas 场景
   → roomService
   → login / roomAction 云函数
-  → rooms 云数据库
+  → rooms 私有裁判数据（仅云函数可读写）
+  → roomViews 脱敏实时视图（客户端只读）
   → 数据库 watch
   → 双方场景同步刷新
 ```
+
+本地人机：
+
+```text
+AiGameScene（玩家黑棋先手）
+  → gomokuAi 收集已有棋子两格范围内候选点
+  → 优先 AI 立即获胜 / 强制拦截玩家五连
+  → 活四、冲四、活三和中心位置综合评分
+  → AI 白棋落子并在本地完成胜负判定
+```
+
+人机对局不调用云函数、不写云数据库，也不依赖在线玩家数量。
 
 好友邀请入口：
 
@@ -54,7 +68,7 @@ Canvas 场景
 ## UI 设计规范
 
 - 视觉定位：暖玉、墨绿、棋盘金，简洁现代并保留棋类氛围。
-- 主色：墨玉绿；辅助色：湖蓝；强调色：棋盘金；背景：暖米白。
+- 主色：墨玉绿；强调色：朱红与棋盘金；背景：暖米白；中性卡片使用纸张白与便签米色。
 - 页面组件统一复用 `theme.js`、`cardRenderer.js`、`buttonRenderer.js`。
 - 交互层级：每页只有一个最主要操作；复制、返回、离开均使用次级样式。
 - 文案定位：中文、短句、对局感明确，不使用密码式房间号占位。
@@ -103,11 +117,11 @@ components/
 sitemap.json
 ```
 
-不要在这些旧目录继续开发小游戏功能。新功能应进入 `game/`、`services/`、`utils/` 或 `cloudfunctions/`。
+迁移前的普通小程序源码已归档到工程外，当前仓库不再保留这些发布无效入口。新功能应进入 `game/`、`services/`、`utils/` 或 `cloudfunctions/`。
 
 ## 当前外部资源
 
 - 正式小游戏 AppID：`wx08c6484b52864efa`
 - 正式云环境：`cloud1-d3glf789q33b91507`
-- 数据库集合：`rooms`
+- 数据库集合：`rooms`（私有）、`roomViews`（脱敏只读视图）
 - 云函数：`login`、`roomAction`

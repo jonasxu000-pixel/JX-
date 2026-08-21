@@ -2,6 +2,7 @@ const Module = require('module');
 const path = require('path');
 
 const rooms = new Map();
+const roomViews = new Map();
 let currentOpenId = '';
 let transactionQueue = Promise.resolve();
 let transactionConflictsRemaining = 0;
@@ -15,13 +16,21 @@ function unwrap(value) {
 }
 
 function matchWhere(room, where) {
-  return Object.entries(where).every(([key, value]) => room[key] === value);
+  return Object.entries(where).every(([key, value]) => {
+    if (value && value.__lt) {
+      return new Date(room[key]).getTime() < new Date(value.value).getTime();
+    }
+    return room[key] === value;
+  });
 }
 
 const db = {
   command: {
     set(value) {
       return { __set: true, value };
+    },
+    lt(value) {
+      return { __lt: true, value };
     },
   },
   serverDate() {
@@ -48,50 +57,67 @@ const db = {
     return transactionRun;
   },
   collection(name) {
-    if (name !== 'rooms') throw new Error(`unexpected collection: ${name}`);
+    const store = name === 'rooms' ? rooms : (name === 'roomViews' ? roomViews : null);
+    if (!store) throw new Error(`unexpected collection: ${name}`);
 
     return {
       add({ data }) {
-        rooms.set(data._id, clone(data));
+        if (store.has(data._id)) return Promise.reject(new Error('document already exists'));
+        store.set(data._id, clone(data));
         return Promise.resolve({ _id: data._id });
       },
       doc(id) {
         return {
           get() {
-            if (!rooms.has(id)) return Promise.reject(new Error('document not found'));
-            return Promise.resolve({ data: clone(rooms.get(id)) });
+            if (!store.has(id)) return Promise.reject(new Error('document not found'));
+            return Promise.resolve({ data: clone(store.get(id)) });
           },
           update({ data }) {
-            if (!rooms.has(id)) return Promise.reject(new Error('document not found'));
-            const current = rooms.get(id);
+            if (!store.has(id)) return Promise.reject(new Error('document not found'));
+            const current = store.get(id);
             Object.entries(data).forEach(([key, value]) => {
               current[key] = clone(unwrap(value));
             });
-            rooms.set(id, current);
+            store.set(id, current);
             return Promise.resolve({ stats: { updated: 1 } });
           },
+          set({ data }) {
+            store.set(id, { _id: id, ...clone(data) });
+            return Promise.resolve({ _id: id });
+          },
           remove() {
-            rooms.delete(id);
+            store.delete(id);
             return Promise.resolve({ stats: { removed: 1 } });
           },
         };
       },
       where(where) {
-        return {
+        const query = {
+          limit() {
+            return query;
+          },
+          get() {
+            const data = [];
+            store.forEach(room => {
+              if (matchWhere(room, where)) data.push(clone(room));
+            });
+            return Promise.resolve({ data });
+          },
           update({ data }) {
             let updated = 0;
-            rooms.forEach((room, id) => {
+            store.forEach((room, id) => {
               if (updated > 0 || !matchWhere(room, where)) return;
               const next = clone(room);
               Object.entries(data).forEach(([key, value]) => {
                 next[key] = clone(unwrap(value));
               });
-              rooms.set(id, next);
+              store.set(id, next);
               updated += 1;
             });
             return Promise.resolve({ stats: { updated } });
           },
         };
+        return query;
       },
     };
   },
@@ -155,6 +181,7 @@ async function createPlayingRoom(roomAction) {
   const roomId = created.roomId;
   assert(roomId, 'createRoom should return roomId');
   assert(/^\d{6}$/.test(roomId), 'roomId should be a 6 digit code');
+  assert(/^[a-f0-9]{36}$/.test(created.viewId), 'createRoom should return a random viewId');
   assert(created.role === 'host', 'createRoom should return host role');
   assert(created.color === 'black', 'createRoom should return black color');
 
@@ -168,11 +195,21 @@ async function createPlayingRoom(roomAction) {
   });
   assert(joined.role === 'guest', 'joinRoom should return guest role');
   assert(joined.color === 'white', 'joinRoom should return white color');
+  assert(joined.viewId === created.viewId, 'both players must receive the same room view');
   const room = rooms.get(roomId);
   assert(room.host.nickname === '黑棋小徐', 'room must store the host display nickname');
   assert(room.host.avatarUrl.includes('host-avatar.png'), 'room must store the host display avatar');
   assert(room.guest.nickname === '白棋好友', 'room must store the guest display nickname');
   assert(room.guest.avatarUrl.includes('guest-avatar.png'), 'room must store the guest display avatar');
+  const publicRoom = roomViews.get(created.viewId);
+  assert(publicRoom, 'createRoom must publish a realtime room view');
+  assert(!JSON.stringify(publicRoom).includes('host-openid'), 'public room view must not expose host OpenID');
+  assert(!JSON.stringify(publicRoom).includes('guest-openid'), 'public room view must not expose guest OpenID');
+  assert(!Object.prototype.hasOwnProperty.call(publicRoom.host, 'openId'),
+    'public host profile must not contain an OpenID field');
+  assert(!Object.prototype.hasOwnProperty.call(publicRoom.guest, 'openId'),
+    'public guest profile must not contain an OpenID field');
+  assert(publicRoom.status === 'playing', 'public room view must follow the private room status');
   return roomId;
 }
 
@@ -187,10 +224,33 @@ async function verifyPlayerProfileSanitization(roomAction) {
   const room = rooms.get(created.roomId);
   assert(room.host.nickname.length <= 12, 'cloud profile nickname must be length limited');
   assert(room.host.avatarUrl === '', 'cloud profile avatar must only accept HTTPS URLs');
+  const publicRoom = roomViews.get(created.viewId);
+  assert(publicRoom.host.nickname === room.host.nickname,
+    'public view must use the sanitized display nickname');
+  assert(publicRoom.host.avatarUrl === '', 'public view must not restore an unsafe avatar URL');
   await call(roomAction, 'profile-host-openid', {
     action: 'leaveRoom',
     roomId: created.roomId,
   });
+}
+
+async function verifyExpiredRoomIsClosed(roomAction) {
+  const created = await call(roomAction, 'expired-host-openid', {
+    action: 'createRoom',
+    playerProfile: { nickname: '过期测试' },
+  });
+  const room = rooms.get(created.roomId);
+  room.expiresAt = '2000-01-01T00:00:00.000Z';
+  rooms.set(created.roomId, room);
+
+  const result = await expectFail(roomAction, 'expired-guest-openid', {
+    action: 'joinRoom',
+    roomId: created.roomId,
+  }, 'expired room join');
+
+  assert(result.error.includes('房间已过期'), 'expired room must return an actionable error');
+  assert(!rooms.has(created.roomId), 'expired private room must be removed');
+  assert(!roomViews.has(created.viewId), 'expired public room view must be removed');
 }
 
 async function verifyHostBlackWin(roomAction) {
@@ -296,6 +356,11 @@ async function verifyRestartRoom(roomAction) {
   assert(restarted.currentTurn === 'host', 'restart should let host black move first');
   assert(restarted.winner === null, 'restart should clear winner');
   assert(restarted.board.every(row => row.every(piece => piece === 0)), 'restart should clear board');
+  const restartedRoom = rooms.get(roomId);
+  const restartedView = roomViews.get(restartedRoom.viewId);
+  assert(restartedView.status === 'playing', 'public room view must show the restarted match');
+  assert(restartedView.board.every(row => row.every(piece => piece === 0)),
+    'public room view must clear the board after restart');
 
   await expectFail(roomAction, 'outsider-openid', { action: 'restartRoom', roomId }, 'outsider restart');
   await expectFail(roomAction, 'host-openid', { action: 'restartRoom', roomId }, 'restart while playing');
@@ -308,6 +373,9 @@ async function verifyLeaveLocksOpponent(roomAction) {
   assert(waitingRoom.status === 'waiting', 'guest leave must return room to waiting');
   assert(waitingRoom.guest === null, 'guest leave must clear the guest identity');
   assert(!waitingRoom.restartReady.host && !waitingRoom.restartReady.guest, 'guest leave must clear restart consent');
+  const waitingView = roomViews.get(waitingRoom.viewId);
+  assert(waitingView.status === 'waiting' && waitingView.guest === null,
+    'guest leave must reset the public room view');
   await expectFail(roomAction, 'host-openid', {
     action: 'placePiece',
     roomId: guestLeaveRoomId,
@@ -316,8 +384,10 @@ async function verifyLeaveLocksOpponent(roomAction) {
   }, 'host move after guest leave');
 
   const hostLeaveRoomId = await createPlayingRoom(roomAction);
+  const hostLeaveViewId = rooms.get(hostLeaveRoomId).viewId;
   await call(roomAction, 'host-openid', { action: 'leaveRoom', roomId: hostLeaveRoomId });
   assert(!rooms.has(hostLeaveRoomId), 'host leave must close the room');
+  assert(!roomViews.has(hostLeaveViewId), 'host leave must remove the public room view');
 }
 
 async function verifySurrender(roomAction) {
@@ -333,6 +403,9 @@ async function verifySurrender(roomAction) {
   assert(finishedRoom.finishReason === 'surrender', 'room must record the surrender finish reason');
   assert(finishedRoom.surrenderedBy === 'guest', 'room must record the surrendering role');
   assert(!finishedRoom.restartReady.host && !finishedRoom.restartReady.guest, 'surrender must clear rematch readiness');
+  const finishedView = roomViews.get(finishedRoom.viewId);
+  assert(finishedView.status === 'finished' && finishedView.winner === 'host',
+    'public room view must publish the surrender result');
   await expectFail(roomAction, 'guest-openid', {
     action: 'placePiece',
     roomId: guestSurrenderRoomId,
@@ -408,6 +481,10 @@ async function verifyConcurrentMoveIsAtomic(roomAction) {
   assert(rejected.length === 1, 'concurrent same-turn moves should reject one request');
   assert(savedPieces.length === 1, 'concurrent same-turn moves should save exactly one black piece');
   assert(room.currentTurn === 'guest', 'concurrent move should switch turn exactly once');
+  const publicRoom = roomViews.get(room.viewId);
+  const publicPieces = publicRoom.board[4].slice(4, 6).filter(piece => piece === 1);
+  assert(publicPieces.length === 1 && publicRoom.currentTurn === 'guest',
+    'public room view must match the committed concurrent move');
 }
 
 async function verifyTransactionConflictRetries(roomAction) {
@@ -514,7 +591,8 @@ async function verifyDiagnosticsDisabledByDefault(roomAction) {
 async function verifyHealthPing(roomAction) {
   delete process.env.ENABLE_ROOM_DIAGNOSTICS;
   const result = await call(roomAction, 'host-openid', { action: 'ping' });
-  assert(result.version === 'roomAction-20260728-versus-profile-ui-5', 'health ping should expose deployed version');
+  assert(result.version === 'roomAction-20260821-private-room-view-6',
+    'health ping should expose deployed version');
 }
 
 async function main() {
@@ -529,6 +607,7 @@ async function main() {
   await verifyLeaveLocksOpponent(roomAction);
   await verifySurrender(roomAction);
   await verifyPlayerProfileSanitization(roomAction);
+  await verifyExpiredRoomIsClosed(roomAction);
   await verifyConcurrentMoveIsAtomic(roomAction);
   await verifyTransactionConflictRetries(roomAction);
   await verifyConcurrentJoinIsAtomic(roomAction);

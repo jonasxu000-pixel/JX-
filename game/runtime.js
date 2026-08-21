@@ -2,6 +2,7 @@ const SceneManager = require('./core/sceneManager');
 const CloudClient = require('./core/cloudClient');
 const HomeScene = require('./scenes/homeScene');
 const LocalGameScene = require('./scenes/localGameScene');
+const AiGameScene = require('./scenes/aiGameScene');
 const CreateRoomScene = require('./scenes/createRoomScene');
 const JoinRoomScene = require('./scenes/joinRoomScene');
 const WaitRoomScene = require('./scenes/waitRoomScene');
@@ -40,6 +41,7 @@ function createRuntime(wxApi) {
 
   manager.register('home', HomeScene);
   manager.register('localGame', LocalGameScene);
+  manager.register('aiGame', AiGameScene);
   manager.register('createRoom', CreateRoomScene);
   manager.register('joinRoom', JoinRoomScene);
   manager.register('waitRoom', WaitRoomScene);

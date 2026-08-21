@@ -2,7 +2,9 @@ const { spawnSync } = require('child_process');
 const fs = require('fs');
 
 const checks = [
+  'scripts/verify-gomoku-ai.js',
   'scripts/verify-room-action.js',
+  'scripts/verify-room-service.js',
   'scripts/verify-online-game-state.js',
   'scripts/verify-minigame-runtime.js',
 ];
@@ -13,6 +15,13 @@ function assert(condition, message) {
 
 function read(file) {
   return fs.readFileSync(file, 'utf8');
+}
+
+function listFiles(directory) {
+  return fs.readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
+    const target = `${directory}/${entry.name}`;
+    return entry.isDirectory() ? listFiles(target) : [target];
+  });
 }
 
 function verifyJson(file) {
@@ -37,6 +46,8 @@ function verifySourceGuards() {
   const profileSource = read('game/scenes/profileScene.js');
   const homeSource = read('game/scenes/homeScene.js');
   const localSource = read('game/scenes/localGameScene.js');
+  const aiSource = read('game/scenes/aiGameScene.js');
+  const aiEngineSource = read('utils/gomokuAi.js');
   const onlineSource = read('game/scenes/onlineGameScene.js');
   const waitSource = read('game/scenes/waitRoomScene.js');
   const safeAreaSource = read('utils/safeArea.js');
@@ -72,6 +83,18 @@ function verifySourceGuards() {
     'result overlay must preserve the final board before its entrance animation');
   assert(localSource.includes('drawResultOverlay'),
     'local matches must use the shared full-screen result overlay');
+  assert(runtimeSource.includes("manager.register('aiGame'"),
+    'runtime must register the local AI match scene');
+  assert(homeSource.includes("manager.go('aiGame')"),
+    'home must expose the AI match entry');
+  assert(aiSource.includes('AI_THINK_DELAY'),
+    'AI matches must show a short thinking state before moving');
+  assert(aiSource.includes('drawResultOverlay'),
+    'AI matches must use the shared full-screen result overlay');
+  assert(aiEngineSource.includes('isWinningMove'),
+    'AI must detect immediate winning and blocking moves');
+  assert(aiEngineSource.includes('forcingDirections'),
+    'AI must score basic multi-direction threats');
   assert(onlineSource.includes('drawResultOverlay'),
     'friend matches must use the shared full-screen result overlay');
   assert(joinSource.includes('autoFillFromClipboard'), 'join scene must automatically detect a copied room id');
@@ -93,6 +116,17 @@ function verifySourceGuards() {
     'room number actions must live only in the waiting room');
   assert(roomServiceSource.includes('playerProfile'),
     'create and join room calls must publish the player display profile');
+  assert(roomServiceSource.includes("collection('roomViews')"),
+    'client realtime reads must use sanitized room views');
+  assert(!roomServiceSource.includes("collection('rooms')"),
+    'client code must not read private rooms directly');
+  ['game', 'services', 'utils'].forEach(directory => {
+    const clientFiles = listFiles(directory).filter(file => file.endsWith('.js'));
+    clientFiles.forEach(file => {
+      assert(!read(file).includes("collection('rooms')"),
+        `${file} must not read private rooms directly`);
+    });
+  });
   assert(runtimeSource.includes("manager.register('home'"), 'runtime must register the authenticated home scene');
   assert(playerSessionSource.includes('gomoku_player_session_v1'), 'WeChat login must persist a local player session');
   assert(playerSessionSource.includes('getPublicPlayerProfile'),
@@ -125,7 +159,16 @@ function verifySourceGuards() {
     'cloud room profiles must sanitize nicknames and avatar URLs');
   assert(cloudSource.includes('ENABLE_ROOM_DIAGNOSTICS'), 'cloud diagnostics must be release-gated');
   assert(cloudSource.includes('isBoardFull(nextBoard)'), 'cloud action must finish full-board draws');
+  assert(permissionDoc.includes('`rooms`：云函数专用真实房间'),
+    'database permission guide must document private rooms');
+  assert(permissionDoc.includes('`roomViews`：客户端实时监听的脱敏视图'),
+    'database permission guide must document public room views');
+  assert(permissionDoc.includes('"read": false'),
+    'database permission guide must disable client reads for private rooms');
   assert(permissionDoc.includes('"write": false'), 'database permission guide must disable client writes');
+  assert(cloudSource.includes('toPublicRoom'), 'cloud action must publish sanitized room views');
+  assert(cloudSource.includes('createViewId'), 'cloud action must issue random room view ids');
+  assert(cloudSource.includes('cleanupExpiredRooms'), 'cloud action must clean expired rooms');
   assert(projectConfig.setting.urlCheck === true, 'release build must keep URL validation enabled');
   assert(projectConfig.setting.minified === true, 'release build must enable JavaScript minification');
   assert(ignored.includes('folder:cloudfunctions'), 'release package must exclude cloud function source');

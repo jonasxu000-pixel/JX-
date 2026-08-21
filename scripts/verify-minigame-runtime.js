@@ -4,6 +4,7 @@ const CreateRoomScene = require('../game/scenes/createRoomScene');
 const HomeScene = require('../game/scenes/homeScene');
 const JoinRoomScene = require('../game/scenes/joinRoomScene');
 const LocalGameScene = require('../game/scenes/localGameScene');
+const AiGameScene = require('../game/scenes/aiGameScene');
 const OnlineGameScene = require('../game/scenes/onlineGameScene');
 const ProfileScene = require('../game/scenes/profileScene');
 const WaitRoomScene = require('../game/scenes/waitRoomScene');
@@ -13,6 +14,8 @@ const {
   getResultOverlayLayout,
 } = require('../game/renderers/resultOverlayRenderer');
 const { buildRoomSharePayload } = require('../utils/share');
+
+const TEST_VIEW_ID = 'a'.repeat(36);
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -637,8 +640,9 @@ function verifyLocalResultUsesOverlay() {
 function verifyRuntimeButtonGesture() {
   const { wx, runtime } = createStartedRuntime();
   const home = runtime.manager.current;
-  const x = runtime.manager.runtime.width / 2;
-  const y = home.getLayout().actionY + 146 + 25;
+  const localAction = home.getActionLayout().local;
+  const x = localAction.x + localAction.width / 2;
+  const y = localAction.y + localAction.height / 2;
 
   wx.touchHandler({
     touches: [{ clientX: x, clientY: y }],
@@ -665,6 +669,60 @@ function verifyRuntimeButtonGesture() {
   });
   assert(runtime.manager.current.constructor.name === 'LocalGameScene',
     'releasing inside the original navigation button must change scenes');
+}
+
+function verifyAiHomeEntry() {
+  const { wx, runtime } = createStartedRuntime();
+  const home = runtime.manager.current;
+  const action = home.getActionLayout().ai;
+  const x = action.x + action.width / 2;
+  const y = action.y + action.height / 2;
+
+  wx.touchHandler({ touches: [{ clientX: x, clientY: y }] });
+  wx.touchEndHandler({ changedTouches: [{ clientX: x, clientY: y }] });
+  assert(runtime.manager.current instanceof AiGameScene,
+    'home AI action must enter the local AI match scene');
+}
+
+function verifyAiTurnFlow() {
+  const { runtime } = createStartedRuntime();
+  runtime.manager.go('aiGame');
+  const scene = runtime.manager.current;
+  const x = scene.boardRect.x + scene.boardRect.width / 2;
+  const y = scene.boardRect.y + scene.boardRect.height / 2;
+
+  runtime.manager.handleTouch({ touches: [{ clientX: x, clientY: y }] });
+  assert(scene.board[7][7] === board.BLACK, 'AI match must let the player place black first');
+  assert(scene.aiThinking && scene.currentPlayer === board.WHITE,
+    'AI match must lock the board while the AI is thinking');
+
+  scene.clearAiTimer();
+  const move = scene.performAiMove();
+  assert(move && scene.board[move.row][move.col] === board.WHITE,
+    'AI match must place one legal white move');
+  assert(!scene.aiThinking && scene.currentPlayer === board.BLACK,
+    'AI move must return the turn to the player');
+
+  const nextPlayerMove = gomokuFirstEmpty(scene.board);
+  scene.placeMove(nextPlayerMove.row, nextPlayerMove.col, board.BLACK);
+  scene.currentPlayer = board.WHITE;
+  scene.aiThinking = true;
+  scene.scheduleAiMove(1000);
+  scene.restart();
+  assert(scene.aiTimer === null && !scene.aiThinking,
+    'restarting during AI thinking must cancel the pending move');
+  assert(scene.board.every(row => row.every(piece => piece === board.EMPTY)),
+    'restarting an AI match must clear the board');
+  scene.onExit();
+}
+
+function gomokuFirstEmpty(targetBoard) {
+  for (let row = 0; row < targetBoard.length; row += 1) {
+    for (let col = 0; col < targetBoard[row].length; col += 1) {
+      if (targetBoard[row][col] === board.EMPTY) return { row, col };
+    }
+  }
+  return null;
 }
 
 function verifyLocalBoardTap() {
@@ -761,40 +819,45 @@ function verifyRoomShare() {
 }
 
 function verifyTouchLayouts() {
-  const width = 375;
-  const height = 667;
-  const ctx = createContextMock();
-  const scenes = [
-    new HomeScene(createLayoutRuntime(width, height)),
-    new JoinRoomScene(createLayoutRuntime(width, height), {}),
-    new LocalGameScene(createLayoutRuntime(width, height)),
-    new CreateRoomScene(createLayoutRuntime(width, height)),
-    new WaitRoomScene(createLayoutRuntime(width, height), {
-      roomId: '123456',
-      role: 'host',
-      color: 'black',
-    }),
-    new OnlineGameScene(createLayoutRuntime(width, height), {
-      roomId: '123456',
-      role: 'host',
-      color: 'black',
-    }),
-    new ProfileScene(createLayoutRuntime(width, height)),
-  ];
+  [
+    [320, 568],
+    [375, 667],
+    [430, 932],
+  ].forEach(([width, height]) => {
+    const ctx = createContextMock();
+    const scenes = [
+      new HomeScene(createLayoutRuntime(width, height)),
+      new JoinRoomScene(createLayoutRuntime(width, height), {}),
+      new LocalGameScene(createLayoutRuntime(width, height)),
+      new AiGameScene(createLayoutRuntime(width, height)),
+      new CreateRoomScene(createLayoutRuntime(width, height)),
+      new WaitRoomScene(createLayoutRuntime(width, height), {
+        roomId: '123456',
+        role: 'host',
+        color: 'black',
+      }),
+      new OnlineGameScene(createLayoutRuntime(width, height), {
+        roomId: '123456',
+        role: 'host',
+        color: 'black',
+      }),
+      new ProfileScene(createLayoutRuntime(width, height)),
+    ];
 
-  scenes[5].statusText = '轮到你落子（黑棋）';
-  scenes[5].isMyTurn = true;
-  scenes[5].boardLocked = false;
+    scenes[6].statusText = '轮到你落子（黑棋）';
+    scenes[6].isMyTurn = true;
+    scenes[6].boardLocked = false;
 
-  scenes.forEach(scene => {
-    const input = new InputManager();
-    scene.render(ctx, input);
-    assert(input.hitAreas.length > 0, `${scene.constructor.name} must expose touch targets`);
-    input.hitAreas.forEach(({ rect }) => {
-      assert(rect.x >= 0 && rect.y >= 0, `${scene.constructor.name} touch target must start on screen`);
-      assert(rect.x + rect.width <= width, `${scene.constructor.name} touch target must fit screen width`);
-      assert(rect.y + rect.height <= height, `${scene.constructor.name} touch target must fit screen height`);
-      assert(rect.height >= 38, `${scene.constructor.name} touch target must remain finger friendly`);
+    scenes.forEach(scene => {
+      const input = new InputManager();
+      scene.render(ctx, input);
+      assert(input.hitAreas.length > 0, `${scene.constructor.name} must expose touch targets`);
+      input.hitAreas.forEach(({ rect }) => {
+        assert(rect.x >= 0 && rect.y >= 0, `${scene.constructor.name} touch target must start on screen`);
+        assert(rect.x + rect.width <= width, `${scene.constructor.name} touch target must fit screen width`);
+        assert(rect.y + rect.height <= height, `${scene.constructor.name} touch target must fit screen height`);
+        assert(rect.height >= 38, `${scene.constructor.name} touch target must remain finger friendly`);
+      });
     });
   });
 }
@@ -812,6 +875,7 @@ function verifySafeAreaAvoidsCapsule() {
 
   const home = new HomeScene(runtime);
   const profile = new ProfileScene(runtime);
+  const ai = new AiGameScene(runtime);
   const online = new OnlineGameScene(runtime, {
     roomId: '123456',
     role: 'host',
@@ -826,6 +890,9 @@ function verifySafeAreaAvoidsCapsule() {
     'profile title must begin below the WeChat capsule');
   assert(online.boardRect.y > runtime.wx.menuButtonRect.bottom,
     'online board and controls must begin below the WeChat capsule');
+  ai.render(createContextMock(), new InputManager());
+  assert(ai.boardRect.y > runtime.wx.menuButtonRect.bottom,
+    'AI board and controls must begin below the WeChat capsule');
 }
 
 function createLayoutRuntime(width, height) {
@@ -853,7 +920,7 @@ async function verifyStaleJoinCannotChangeScene() {
   scene.roomId = '123456';
   scene.joinRoom();
   runtime.manager.go('home');
-  resolveJoin({ role: 'guest', color: 'white' });
+  resolveJoin({ viewId: TEST_VIEW_ID, role: 'guest', color: 'white' });
   await Promise.resolve();
   await Promise.resolve();
 
@@ -872,6 +939,7 @@ function verifyHostReturnsToWaitingWhenGuestLeaves() {
   };
   const scene = new OnlineGameScene(runtime, {
     roomId: '123456',
+    viewId: TEST_VIEW_ID,
     role: 'host',
     color: 'black',
   });
@@ -886,6 +954,7 @@ function verifyHostReturnsToWaitingWhenGuestLeaves() {
   assert(transitions.length === 1, 'guest departure must trigger one scene transition');
   assert(transitions[0].name === 'waitRoom', 'host must return to WaitRoomScene after guest departure');
   assert(transitions[0].params.roomId === '123456', 'host must keep the existing room id');
+  assert(transitions[0].params.viewId === TEST_VIEW_ID, 'host must keep the private room view id');
   assert(transitions[0].params.role === 'host', 'host role must be preserved while waiting');
 }
 
@@ -909,6 +978,7 @@ async function verifyWaitingHostPollingFallback() {
     },
   }, {
     roomId: '123456',
+    viewId: TEST_VIEW_ID,
     role: 'host',
     color: 'black',
   });
@@ -932,7 +1002,12 @@ async function verifyCreateRoomAutoEntersWaiting() {
   const scene = new CreateRoomScene({
     cloud: {
       createRoom() {
-        return Promise.resolve('246810');
+        return Promise.resolve({
+          roomId: '246810',
+          viewId: TEST_VIEW_ID,
+          role: 'host',
+          color: 'black',
+        });
       },
       leaveRoom() {
         return Promise.resolve();
@@ -955,6 +1030,8 @@ async function verifyCreateRoomAutoEntersWaiting() {
     'successful room creation must enter WaitRoomScene without another button press');
   assert(transitions[0].params.roomId === '246810',
     'automatic waiting-room transition must preserve the created room id');
+  assert(transitions[0].params.viewId === TEST_VIEW_ID,
+    'automatic waiting-room transition must preserve the room view id');
   assert(transitions[0].params.role === 'host' && transitions[0].params.color === 'black',
     'room creator must enter the waiting room as the black host');
 }
@@ -985,7 +1062,12 @@ async function verifyAbandonedCreateCleansRoom() {
 
   scene.onEnter();
   scene.onExit();
-  resolveCreate('975310');
+  resolveCreate({
+    roomId: '975310',
+    viewId: TEST_VIEW_ID,
+    role: 'host',
+    color: 'black',
+  });
   await flush();
   await flush();
 
@@ -1003,7 +1085,12 @@ async function verifyCreateFailureCanRetry() {
       createRoom() {
         attempts += 1;
         if (attempts === 1) return Promise.reject(new Error('网络暂不可用'));
-        return Promise.resolve('112233');
+        return Promise.resolve({
+          roomId: '112233',
+          viewId: TEST_VIEW_ID,
+          role: 'host',
+          color: 'black',
+        });
       },
       leaveRoom() {
         return Promise.resolve();
@@ -1095,6 +1182,8 @@ async function main() {
   verifyResultOverlayLayout();
   verifyLocalResultUsesOverlay();
   verifyRuntimeButtonGesture();
+  verifyAiHomeEntry();
+  verifyAiTurnFlow();
   await verifyWeChatLogin();
   await verifyIncompleteProfileIsNotMarkedComplete();
   verifyPrivacyAuthorizationFailure();

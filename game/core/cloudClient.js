@@ -42,12 +42,12 @@ class CloudClient {
     return roomService.joinRoom(roomId, this.getPlayerProfile());
   }
 
-  getRoom(roomId) {
-    return roomService.getRoom(roomId);
+  getRoom(viewId) {
+    return roomService.getRoom(viewId);
   }
 
-  watchRoom(roomId, onChange, onError) {
-    return roomService.watchRoom(roomId, onChange, onError);
+  watchRoom(viewId, onChange, onError) {
+    return roomService.watchRoom(viewId, onChange, onError);
   }
 
   placePiece(roomId, row, col) {

@@ -1,7 +1,7 @@
 /**
  * Debug Toolkit - 联机对战调试工具
  * 挂载到 window 对象，方便在控制台直接调用
- * 用法：checkRoom('123456')
+ * 用法：checkRoomView('36 位 viewId')
  */
 
 const db = wx.cloud.database();
@@ -31,21 +31,21 @@ function checkOpenId() {
 }
 
 /**
- * 3. 查看房间完整状态
- * @param {string} roomId
+ * 3. 查看客户端可见的脱敏房间状态
+ * @param {string} viewId
  */
-function checkRoom(roomId) {
-  if (!roomId) {
-    console.warn('️ 请传入房间号，例如: checkRoom("148024")');
+function checkRoomView(viewId) {
+  if (!viewId) {
+    console.warn('️ 请传入创建或加入房间后返回的 viewId');
     return Promise.resolve();
   }
-  console.log(`⏳ 正在查询房间: ${roomId}`);
-  return db.collection('rooms').doc(roomId).get().then(res => {
-    console.log('✅ 房间数据获取成功:');
+  console.log(`⏳ 正在查询房间脱敏视图: ${viewId}`);
+  return db.collection('roomViews').doc(viewId).get().then(res => {
+    console.log('✅ 房间脱敏视图获取成功:');
     console.dir(res.data);
     return res.data;
   }).catch(err => {
-    console.error(`❌ 房间 ${roomId} 查询失败:`, err);
+    console.error(`❌ 房间视图 ${viewId} 查询失败:`, err);
     return null;
   });
 }
@@ -53,17 +53,17 @@ function checkRoom(roomId) {
 /**
  * 4. 验证 watch 是否启动
  * 监听房间 5 秒，若无报错则视为启动成功
- * @param {string} roomId
+ * @param {string} viewId
  */
-function checkWatch(roomId) {
-  if (!roomId) {
-    console.warn('️ 请传入房间号，例如: checkWatch("148024")');
+function checkWatch(viewId) {
+  if (!viewId) {
+    console.warn('️ 请传入创建或加入房间后返回的 viewId');
     return Promise.resolve();
   }
-  console.log(`⏳ 正在启动对房间 ${roomId} 的监听...`);
+  console.log(`⏳ 正在启动对房间视图 ${viewId} 的监听...`);
 
   return new Promise((resolve) => {
-    const watcher = db.collection('rooms').doc(roomId).watch({
+    const watcher = db.collection('roomViews').doc(viewId).watch({
       onChange(snapshot) {
         console.log('✅ Watch 触发! 数据类型:', snapshot.docChanges[0]?.dataType);
       },
@@ -104,7 +104,7 @@ function checkRoomAction() {
 if (typeof window !== 'undefined') {
   window.checkEnv = checkEnv;
   window.checkOpenId = checkOpenId;
-  window.checkRoom = checkRoom;
+  window.checkRoomView = checkRoomView;
   window.checkWatch = checkWatch;
   window.checkRoomAction = checkRoomAction;
 }
@@ -112,7 +112,7 @@ if (typeof window !== 'undefined') {
 module.exports = {
   checkEnv,
   checkOpenId,
-  checkRoom,
+  checkRoomView,
   checkWatch,
   checkRoomAction,
 };

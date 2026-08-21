@@ -101,9 +101,7 @@ class HomeScene {
   render(ctx, input) {
     const { width, manager } = this.runtime;
     const layout = this.getLayout();
-    const buttonWidth = Math.min(width - 48, 340);
-    const x = (width - buttonWidth) / 2;
-    const startY = layout.actionY;
+    const actions = this.getActionLayout(layout);
 
     this.drawPlayerBar(ctx, input, layout);
 
@@ -111,15 +109,15 @@ class HomeScene {
       x: 20,
       y: layout.heroY,
       width: width - 40,
-      height: 190,
+      height: layout.heroHeight,
       fill: COLORS.surface,
     });
-    drawBrandStones(ctx, width / 2, layout.heroY + 34);
-    drawTitle(ctx, '棋遇五子棋', width / 2, layout.heroY + 78);
-    drawSubtitle(ctx, '好友联机五子棋 · 落子见真章', width / 2, layout.heroY + 110);
+    drawBrandStones(ctx, width / 2, layout.heroY + layout.heroStoneOffset);
+    drawTitle(ctx, '棋遇五子棋', width / 2, layout.heroY + layout.heroTitleOffset);
+    drawSubtitle(ctx, '好友联机五子棋 · 落子见真章', width / 2, layout.heroY + layout.heroSubtitleOffset);
     drawPill(ctx, {
       x: width / 2 - 72,
-      y: layout.heroY + 138,
+      y: layout.heroY + layout.heroPillOffset,
       width: 144,
       height: 34,
       text: '15 路棋盘 · 黑棋先行',
@@ -138,45 +136,71 @@ class HomeScene {
     }
 
     drawButton(ctx, input, {
-      x,
-      y: startY,
-      width: buttonWidth,
-      height: 58,
+      ...actions.create,
       text: '创建好友房',
       onTap: () => manager.go('createRoom'),
     });
 
     drawButton(ctx, input, {
-      x,
-      y: startY + 74,
-      width: buttonWidth,
-      height: 56,
+      ...actions.join,
       text: '加入好友房',
       variant: 'secondary',
       onTap: () => manager.go('joinRoom'),
     });
 
     drawButton(ctx, input, {
-      x,
-      y: startY + 146,
-      width: buttonWidth,
-      height: 50,
+      ...actions.ai,
+      text: '人机对战',
+      variant: 'gold',
+      fill: COLORS.jadeSoft,
+      textColor: COLORS.jade,
+      stroke: '#B8C9C0',
+      onTap: () => manager.go('aiGame'),
+    });
+
+    drawButton(ctx, input, {
+      ...actions.local,
       text: '同屏双人对战',
       variant: 'gold',
       onTap: () => manager.go('localGame'),
     });
 
-    drawSubtitle(ctx, '创建房间 · 一键邀请 · 好友实时对战', width / 2, startY + 222);
+    drawSubtitle(ctx, '好友联机 · 人机对弈 · 同屏对战', width / 2, actions.noteY);
     drawHomeDecoration(ctx, width, this.runtime.height);
   }
 
   getLayout() {
     const playerY = getContentTop(this.runtime.wx);
     const heroY = playerY + 88;
+    const compact = this.runtime.height < 720;
+    const heroHeight = compact ? 146 : 190;
     return {
       playerY,
       heroY,
-      actionY: heroY + 216,
+      heroHeight,
+      heroStoneOffset: compact ? 24 : 34,
+      heroTitleOffset: compact ? 56 : 78,
+      heroSubtitleOffset: compact ? 84 : 110,
+      heroPillOffset: compact ? 104 : 138,
+      actionY: heroY + heroHeight + 16,
+    };
+  }
+
+  getActionLayout(layout = this.getLayout()) {
+    const { width } = this.runtime;
+    const buttonWidth = Math.min(width - 48, 340);
+    const x = (width - buttonWidth) / 2;
+    const halfGap = 12;
+    const halfWidth = (buttonWidth - halfGap) / 2;
+    const create = { x, y: layout.actionY, width: buttonWidth, height: 52 };
+    const join = { x, y: create.y + create.height + 10, width: buttonWidth, height: 50 };
+    const lowerY = join.y + join.height + 10;
+    return {
+      create,
+      join,
+      ai: { x, y: lowerY, width: halfWidth, height: 48 },
+      local: { x: x + halfWidth + halfGap, y: lowerY, width: halfWidth, height: 48 },
+      noteY: lowerY + 74,
     };
   }
 

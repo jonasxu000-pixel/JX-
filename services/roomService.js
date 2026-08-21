@@ -37,24 +37,41 @@ function callRoomAction(data, fallbackMessage) {
 
 function createRoom(playerProfile) {
   return callRoomAction({ action: 'createRoom', playerProfile }, '创建失败')
-    .then(result => result.roomId);
+    .then(result => {
+      assertViewId(result.viewId);
+      return {
+        roomId: result.roomId,
+        viewId: result.viewId,
+        role: result.role,
+        color: result.color,
+      };
+    });
 }
 
 function joinRoom(roomId, playerProfile) {
   return callRoomAction({ action: 'joinRoom', roomId, playerProfile }, '加入失败')
     .then(result => {
-    return {
-      roomId,
-      role: result.role,
-      color: result.color,
-    };
-  });
+      assertViewId(result.viewId);
+      return {
+        roomId,
+        viewId: result.viewId,
+        role: result.role,
+        color: result.color,
+      };
+    });
 }
 
-function watchRoom(roomId, callback, errorCallback) {
+function assertViewId(viewId) {
+  if (!/^[a-f0-9]{36}$/i.test(String(viewId || ''))) {
+    throw new Error('房间访问凭证失效，请重新进入房间');
+  }
+}
+
+function watchRoom(viewId, callback, errorCallback) {
+  assertViewId(viewId);
   const db = wx.cloud.database();
 
-  return db.collection('rooms').doc(roomId).watch({
+  return db.collection('roomViews').doc(viewId).watch({
     onChange(snapshot) {
       if (snapshot.docs && snapshot.docs.length > 0) {
         const roomData = snapshot.docs[0];
@@ -79,9 +96,10 @@ function watchRoom(roomId, callback, errorCallback) {
   });
 }
 
-function getRoom(roomId) {
+function getRoom(viewId) {
+  assertViewId(viewId);
   const db = wx.cloud.database();
-  return db.collection('rooms').doc(roomId).get().then(res => res.data);
+  return db.collection('roomViews').doc(viewId).get().then(res => res.data);
 }
 
 function placePiece(roomId, row, col) {

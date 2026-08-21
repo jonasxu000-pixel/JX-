@@ -1,4 +1,5 @@
 const cloud = require('wx-server-sdk');
+const crypto = require('crypto');
 
 cloud.init({
   env: cloud.DYNAMIC_CURRENT_ENV,
@@ -8,12 +9,17 @@ const db = cloud.database();
 const _ = db.command;
 
 const rooms = db.collection('rooms');
+const roomViews = db.collection('roomViews');
 
 const BOARD_SIZE = 15;
 const EMPTY = 0;
 const BLACK = 1;
 const WHITE = 2;
-const ROOM_ACTION_VERSION = 'roomAction-20260728-versus-profile-ui-5';
+const ROOM_SCHEMA_VERSION = 2;
+const WAITING_ROOM_TTL_MS = 30 * 60 * 1000;
+const ACTIVE_ROOM_TTL_MS = 6 * 60 * 60 * 1000;
+const CLEANUP_BATCH_SIZE = 20;
+const ROOM_ACTION_VERSION = 'roomAction-20260821-private-room-view-6';
 const DIAGNOSTIC_ACTIONS = new Set([
   'selfTestMove',
   'selfTestMatch',
@@ -140,6 +146,117 @@ function createUniqueRoomId() {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
 
+function createViewId() {
+  return crypto.randomBytes(18).toString('hex');
+}
+
+function createExpiresAt(status, now = Date.now()) {
+  const ttl = status === 'waiting' ? WAITING_ROOM_TTL_MS : ACTIVE_ROOM_TTL_MS;
+  return new Date(now + ttl);
+}
+
+function getTime(value) {
+  if (!value) return 0;
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === 'string' || typeof value === 'number') {
+    const parsed = new Date(value).getTime();
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  if (typeof value.toDate === 'function') return value.toDate().getTime();
+  return 0;
+}
+
+function isRoomExpired(room, now = Date.now()) {
+  const expiresAt = getTime(room && room.expiresAt);
+  return expiresAt > 0 && expiresAt <= now;
+}
+
+function isCurrentRoomVersion(room) {
+  return Boolean(
+    room
+    && room.schemaVersion === ROOM_SCHEMA_VERSION
+    && /^[a-f0-9]{36}$/i.test(String(room.viewId || '')),
+  );
+}
+
+function toPublicPlayer(player) {
+  if (!player) return null;
+  return {
+    color: player.color,
+    ...sanitizePlayerProfile(player),
+  };
+}
+
+function toPublicRoom(room) {
+  return {
+    schemaVersion: ROOM_SCHEMA_VERSION,
+    host: toPublicPlayer(room.host),
+    guest: toPublicPlayer(room.guest),
+    currentTurn: room.currentTurn,
+    board: normalizeBoard(room.board),
+    lastMove: room.lastMove || null,
+    winner: room.winner || null,
+    status: room.status,
+    finishReason: room.finishReason || null,
+    surrenderedBy: room.surrenderedBy || null,
+    restartReady: room.restartReady || createRestartReady(),
+    createdAt: room.createdAt,
+    updatedAt: room.updatedAt,
+    expiresAt: room.expiresAt,
+  };
+}
+
+function withoutDocumentId(document) {
+  const { _id, ...data } = document;
+  return data;
+}
+
+async function replaceRoomAndView(transaction, roomDoc, room, updates) {
+  const updatedAt = new Date();
+  const nextStatus = updates.status || room.status;
+  const nextRoom = {
+    ...room,
+    ...updates,
+    schemaVersion: ROOM_SCHEMA_VERSION,
+    updatedAt,
+    expiresAt: createExpiresAt(nextStatus, updatedAt.getTime()),
+  };
+
+  await roomDoc.set({ data: withoutDocumentId(nextRoom) });
+  if (nextRoom.viewId) {
+    await transaction.collection('roomViews').doc(nextRoom.viewId).set({
+      data: toPublicRoom(nextRoom),
+    });
+  }
+
+  return nextRoom;
+}
+
+async function removeRoomAndView(transaction, roomDoc, room) {
+  if (room && room.viewId) {
+    await transaction.collection('roomViews').doc(room.viewId).remove().catch(() => {});
+  }
+  await roomDoc.remove().catch(() => {});
+}
+
+async function cleanupExpiredRooms() {
+  const now = new Date();
+  const expired = await rooms
+    .where({ expiresAt: _.lt(now) })
+    .limit(CLEANUP_BATCH_SIZE)
+    .get();
+  const documents = (expired && expired.data) || [];
+
+  await Promise.all(documents.map(async room => {
+    if (room.viewId) {
+      await roomViews.doc(room.viewId).remove().catch(() => {});
+    }
+    await rooms.doc(room._id).remove().catch(() => {});
+  }));
+
+  return documents.length;
+}
+
 function isTransactionConflict(err) {
   const message = String(err && (err.message || err.errMsg || err));
   return message.includes('TransactionConflict');
@@ -174,6 +291,15 @@ async function joinRoomForOpenId(targetRoomId, openId, playerProfile) {
       return { success: false, error: '房间不存在' };
     }
 
+    if (!isCurrentRoomVersion(room)) {
+      return { success: false, error: '房间版本已过期，请重新创建' };
+    }
+
+    if (isRoomExpired(room)) {
+      await removeRoomAndView(transaction, roomDoc, room);
+      return { success: false, error: '房间已过期，请重新创建' };
+    }
+
     if (room.status !== 'waiting') {
       return { success: false, error: '房间不可加入' };
     }
@@ -182,23 +308,21 @@ async function joinRoomForOpenId(targetRoomId, openId, playerProfile) {
       return { success: false, error: '不能加入自己创建的房间' };
     }
 
-    await roomDoc.update({
-      data: {
-        guest: _.set({
-          openId,
-          color: 'white',
-          ...sanitizePlayerProfile(playerProfile),
-        }),
-        status: 'playing',
-        restartReady: _.set(createRestartReady()),
-        finishReason: null,
-        surrenderedBy: null,
-        updatedAt: db.serverDate(),
+    await replaceRoomAndView(transaction, roomDoc, room, {
+      guest: {
+        openId,
+        color: 'white',
+        ...sanitizePlayerProfile(playerProfile),
       },
+      status: 'playing',
+      restartReady: createRestartReady(),
+      finishReason: null,
+      surrenderedBy: null,
     });
 
     return {
       success: true,
+      viewId: room.viewId,
       role: 'guest',
       color: 'white',
     };
@@ -221,6 +345,11 @@ async function placePieceForOpenId(targetRoomId, targetRow, targetCol, openId) {
 
     if (!room) {
       return { success: false, error: '房间不存在' };
+    }
+
+    if (isRoomExpired(room)) {
+      await removeRoomAndView(transaction, roomDoc, room);
+      return { success: false, error: '房间已过期，请重新创建' };
     }
 
     if (room.status !== 'playing') {
@@ -260,18 +389,15 @@ async function placePieceForOpenId(targetRoomId, targetRow, targetCol, openId) {
       role,
     };
 
-    await roomDoc.update({
-      data: {
-        board: _.set(nextBoard),
-        lastMove: _.set(lastMove),
-        currentTurn: nextTurn,
-        winner,
-        status: nextStatus,
-        finishReason: hasWinner ? 'five' : (hasDraw ? 'draw' : null),
-        surrenderedBy: null,
-        restartReady: _.set(createRestartReady()),
-        updatedAt: db.serverDate(),
-      },
+    await replaceRoomAndView(transaction, roomDoc, room, {
+      board: nextBoard,
+      lastMove,
+      currentTurn: nextTurn,
+      winner,
+      status: nextStatus,
+      finishReason: hasWinner ? 'five' : (hasDraw ? 'draw' : null),
+      surrenderedBy: null,
+      restartReady: createRestartReady(),
     });
 
     return {
@@ -299,6 +425,11 @@ async function surrenderRoomForOpenId(targetRoomId, openId) {
       return { success: false, error: '房间不存在' };
     }
 
+    if (isRoomExpired(room)) {
+      await removeRoomAndView(transaction, roomDoc, room);
+      return { success: false, error: '房间已过期，请重新创建' };
+    }
+
     if (room.status !== 'playing') {
       return { success: false, error: '当前对局不可投降' };
     }
@@ -313,16 +444,13 @@ async function surrenderRoomForOpenId(targetRoomId, openId) {
     }
 
     const winner = nextRole(role);
-    await roomDoc.update({
-      data: {
-        currentTurn: winner,
-        winner,
-        status: 'finished',
-        finishReason: 'surrender',
-        surrenderedBy: role,
-        restartReady: _.set(createRestartReady()),
-        updatedAt: db.serverDate(),
-      },
+    await replaceRoomAndView(transaction, roomDoc, room, {
+      currentTurn: winner,
+      winner,
+      status: 'finished',
+      finishReason: 'surrender',
+      surrenderedBy: role,
+      restartReady: createRestartReady(),
     });
 
     return {
@@ -349,6 +477,11 @@ async function restartRoomForOpenId(targetRoomId, openId) {
       return { success: false, error: '房间不存在' };
     }
 
+    if (isRoomExpired(room)) {
+      await removeRoomAndView(transaction, roomDoc, room);
+      return { success: false, error: '房间已过期，请重新创建' };
+    }
+
     const role = getPlayerRole(room, openId);
     if (!role) {
       return { success: false, error: '你不在当前房间中' };
@@ -370,12 +503,7 @@ async function restartRoomForOpenId(targetRoomId, openId) {
     const bothReady = restartReady.host && restartReady.guest;
 
     if (!bothReady) {
-      await roomDoc.update({
-        data: {
-          restartReady: _.set(restartReady),
-          updatedAt: db.serverDate(),
-        },
-      });
+      await replaceRoomAndView(transaction, roomDoc, room, { restartReady });
       return {
         success: true,
         restarted: false,
@@ -385,18 +513,15 @@ async function restartRoomForOpenId(targetRoomId, openId) {
     }
 
     const nextBoard = createBoard();
-    await roomDoc.update({
-      data: {
-        board: _.set(nextBoard),
-        lastMove: null,
-        currentTurn: 'host',
-        winner: null,
-        status: 'playing',
-        finishReason: null,
-        surrenderedBy: null,
-        restartReady: _.set(createRestartReady()),
-        updatedAt: db.serverDate(),
-      },
+    await replaceRoomAndView(transaction, roomDoc, room, {
+      board: nextBoard,
+      lastMove: null,
+      currentTurn: 'host',
+      winner: null,
+      status: 'playing',
+      finishReason: null,
+      surrenderedBy: null,
+      restartReady: createRestartReady(),
     });
 
     return {
@@ -422,27 +547,29 @@ async function leaveRoomForOpenId(targetRoomId, openId) {
     const room = roomRes.data;
     if (!room) return { success: true };
 
+    if (isRoomExpired(room)) {
+      await removeRoomAndView(transaction, roomDoc, room);
+      return { success: true, roomClosed: true };
+    }
+
     const role = getPlayerRole(room, openId);
     if (!role) return { success: true };
 
     if (role === 'host') {
-      await roomDoc.remove();
+      await removeRoomAndView(transaction, roomDoc, room);
       return { success: true, roomClosed: true };
     }
 
-    await roomDoc.update({
-      data: {
-        guest: null,
-        status: 'waiting',
-        currentTurn: 'host',
-        board: _.set(createBoard()),
-        lastMove: null,
-        winner: null,
-        finishReason: null,
-        surrenderedBy: null,
-        restartReady: _.set(createRestartReady()),
-        updatedAt: db.serverDate(),
-      },
+    await replaceRoomAndView(transaction, roomDoc, room, {
+      guest: null,
+      status: 'waiting',
+      currentTurn: 'host',
+      board: createBoard(),
+      lastMove: null,
+      winner: null,
+      finishReason: null,
+      surrenderedBy: null,
+      restartReady: createRestartReady(),
     });
     return { success: true, opponentLeft: true };
   });
@@ -469,6 +596,7 @@ exports.main = async (event = {}) => {
 
     switch (action) {
       case 'ping':
+        await cleanupExpiredRooms().catch(err => console.warn('room cleanup skipped:', err));
         return {
           success: true,
           version: ROOM_ACTION_VERSION,
@@ -477,10 +605,15 @@ exports.main = async (event = {}) => {
         };
 
       case 'createRoom': {
+        await cleanupExpiredRooms().catch(err => console.warn('room cleanup skipped:', err));
         for (let attempt = 0; attempt < 5; attempt += 1) {
           const newRoomId = createUniqueRoomId();
+          const viewId = createViewId();
+          const createdAt = new Date();
           const roomData = {
             _id: newRoomId,
+            schemaVersion: ROOM_SCHEMA_VERSION,
+            viewId,
             host: {
               openId: callerOpenId,
               color: 'black',
@@ -495,16 +628,29 @@ exports.main = async (event = {}) => {
             finishReason: null,
             surrenderedBy: null,
             restartReady: createRestartReady(),
-            createdAt: db.serverDate(),
-            updatedAt: db.serverDate(),
+            createdAt,
+            updatedAt: createdAt,
+            expiresAt: createExpiresAt('waiting', createdAt.getTime()),
           };
 
           try {
             await rooms.add({ data: roomData });
+            try {
+              await roomViews.add({
+                data: {
+                  _id: viewId,
+                  ...toPublicRoom(roomData),
+                },
+              });
+            } catch (err) {
+              await rooms.doc(newRoomId).remove().catch(() => {});
+              throw err;
+            }
 
             return {
               success: true,
               roomId: newRoomId,
+              viewId,
               role: 'host',
               color: 'black',
             };
@@ -798,31 +944,48 @@ exports.main = async (event = {}) => {
 
       case 'selfTestJoinRoom': {
         let testRoomId = '';
+        let testViewId = '';
 
         try {
           for (let attempt = 0; attempt < 5; attempt += 1) {
             testRoomId = createUniqueRoomId();
+            testViewId = createViewId();
             try {
-              await rooms.add({
+              const createdAt = new Date();
+              const roomData = {
+                _id: testRoomId,
+                schemaVersion: ROOM_SCHEMA_VERSION,
+                viewId: testViewId,
+                host: {
+                  openId: callerOpenId,
+                  color: 'black',
+                },
+                guest: null,
+                currentTurn: 'host',
+                board: createBoard(),
+                lastMove: null,
+                winner: null,
+                status: 'waiting',
+                finishReason: null,
+                surrenderedBy: null,
+                restartReady: createRestartReady(),
+                createdAt,
+                updatedAt: createdAt,
+                expiresAt: createExpiresAt('waiting', createdAt.getTime()),
+              };
+              await rooms.add({ data: roomData });
+              await roomViews.add({
                 data: {
-                  _id: testRoomId,
-                  host: {
-                    openId: callerOpenId,
-                    color: 'black',
-                  },
-                  guest: null,
-                  currentTurn: 'host',
-                  board: createBoard(),
-                  lastMove: null,
-                  winner: null,
-                  status: 'waiting',
-                  createdAt: db.serverDate(),
-                  updatedAt: db.serverDate(),
+                  _id: testViewId,
+                  ...toPublicRoom(roomData),
                 },
               });
               break;
             } catch (err) {
+              if (testRoomId) await rooms.doc(testRoomId).remove().catch(() => {});
+              if (testViewId) await roomViews.doc(testViewId).remove().catch(() => {});
               testRoomId = '';
+              testViewId = '';
               if (attempt === 4) throw err;
             }
           }
@@ -858,6 +1021,9 @@ exports.main = async (event = {}) => {
         } finally {
           if (testRoomId) {
             await rooms.doc(testRoomId).remove().catch(() => {});
+          }
+          if (testViewId) {
+            await roomViews.doc(testViewId).remove().catch(() => {});
           }
         }
       }

@@ -11,6 +11,7 @@ class WaitRoomScene {
   constructor(runtime, params) {
     this.runtime = runtime;
     this.roomId = params.roomId;
+    this.viewId = params.viewId;
     this.role = params.role || 'host';
     this.color = params.color || (this.role === 'host' ? 'black' : 'white');
     this.error = '';
@@ -57,7 +58,7 @@ class WaitRoomScene {
   loadRoom() {
     if (this.loadInFlight) return Promise.resolve();
     this.loadInFlight = true;
-    return this.runtime.cloud.getRoom(this.roomId)
+    return this.runtime.cloud.getRoom(this.viewId)
       .then(roomData => {
         if (this.active) this.applyRoom(roomData);
       })
@@ -76,7 +77,7 @@ class WaitRoomScene {
     this.clearWatch();
     this.clearRestart();
     this.watcher = this.runtime.cloud.watchRoom(
-      this.roomId,
+      this.viewId,
       roomData => {
         if (this.active) this.applyRoom(roomData);
       },
@@ -98,6 +99,7 @@ class WaitRoomScene {
       this.transitionStarted = true;
       this.runtime.manager.go('onlineGame', {
         roomId: this.roomId,
+        viewId: this.viewId,
         role: this.role,
         color: this.color,
       });
