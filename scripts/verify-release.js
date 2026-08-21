@@ -2,6 +2,7 @@ const { spawnSync } = require('child_process');
 const fs = require('fs');
 
 const checks = [
+  'scripts/verify-user-facing-errors.js',
   'scripts/verify-gomoku-ai.js',
   'scripts/verify-room-action.js',
   'scripts/verify-room-service.js',
@@ -52,6 +53,7 @@ function verifySourceGuards() {
   const waitSource = read('game/scenes/waitRoomScene.js');
   const safeAreaSource = read('utils/safeArea.js');
   const cloudSource = read('cloudfunctions/roomAction/index.js');
+  const errorSource = read('utils/userFacingError.js');
   const permissionDoc = read('docs/DATABASE_PERMISSIONS.md');
   const gameConfig = JSON.parse(read('game.json'));
   const projectConfig = JSON.parse(read('project.config.json'));
@@ -169,10 +171,27 @@ function verifySourceGuards() {
   assert(cloudSource.includes('toPublicRoom'), 'cloud action must publish sanitized room views');
   assert(cloudSource.includes('createViewId'), 'cloud action must issue random room view ids');
   assert(cloudSource.includes('cleanupExpiredRooms'), 'cloud action must clean expired rooms');
+  assert(cloudSource.includes("error: '房间服务暂时不可用，请稍后重试'"),
+    'unexpected cloud failures must return a stable Chinese message');
+  assert(!cloudSource.includes('error: err.message || String(err)'),
+    'cloud failures must not expose raw internal messages');
+  assert(errorSource.includes('toUserMessage'),
+    'client errors must pass through the user-facing error boundary');
+  assert(createSource.includes('maxWidth: width - 96'),
+    'create-room error labels must have a defensive width limit');
+  assert(!profileSource.includes('微信返回：'),
+    'profile dialogs must not display raw SDK diagnostic strings');
   assert(projectConfig.setting.urlCheck === true, 'release build must keep URL validation enabled');
   assert(projectConfig.setting.minified === true, 'release build must enable JavaScript minification');
   assert(ignored.includes('folder:cloudfunctions'), 'release package must exclude cloud function source');
   assert(ignored.includes('folder:.codex-preview'), 'release package must exclude local preview artifacts');
+  assert(ignored.includes('file:assets/qiyu-gomoku-icon-rc14.png'),
+    'platform icon source must stay outside the Mini Game code package');
+  const icon = fs.readFileSync('assets/qiyu-gomoku-icon-rc14.png');
+  const iconWidth = icon.readUInt32BE(16);
+  const iconHeight = icon.readUInt32BE(20);
+  assert(iconWidth === iconHeight && iconWidth >= 1024,
+    'release icon candidate must be a square PNG of at least 1024 px');
   ['app.js', 'app.json', 'app.wxss', 'sitemap.json', 'pages', 'components'].forEach(legacyPath => {
     assert(!fs.existsSync(legacyPath),
       `legacy Mini Program source must stay outside the Mini Game package: ${legacyPath}`);

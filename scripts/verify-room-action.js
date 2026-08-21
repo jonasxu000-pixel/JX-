@@ -591,7 +591,7 @@ async function verifyDiagnosticsDisabledByDefault(roomAction) {
 async function verifyHealthPing(roomAction) {
   delete process.env.ENABLE_ROOM_DIAGNOSTICS;
   const result = await call(roomAction, 'host-openid', { action: 'ping' });
-  assert(result.version === 'roomAction-20260821-private-room-view-6',
+  assert(result.version === 'roomAction-20260821-safe-errors-7',
     'health ping should expose deployed version');
 }
 

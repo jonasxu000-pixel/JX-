@@ -11,6 +11,7 @@ const {
 const { drawAvatar } = require('../renderers/avatarRenderer');
 const { COLORS } = require('../design/theme');
 const { getContentTop } = require('../../utils/safeArea');
+const { toUserMessage } = require('../../utils/userFacingError');
 const { getStoredPlayer } = require('../../utils/playerSession');
 
 class OnlineGameScene {
@@ -77,7 +78,7 @@ class OnlineGameScene {
       })
       .catch(err => {
         if (!this.active) return;
-        this.statusText = err.message || '房间同步失败';
+        this.statusText = toUserMessage(err, '房间同步失败');
         this.syncing = false;
         this.runtime.manager.render();
       });
@@ -431,7 +432,7 @@ class OnlineGameScene {
 
     this.runtime.cloud.placePiece(this.roomId, grid.row, grid.col)
       .catch(err => {
-        this.statusText = err.message || '落子失败';
+        this.statusText = toUserMessage(err, '落子失败');
       })
       .finally(() => {
         this.loadRoom().finally(() => {
@@ -453,7 +454,7 @@ class OnlineGameScene {
         this.statusText = result.restarted ? '新一局开始' : '已准备，等待对手确认';
       })
       .catch(err => {
-        this.statusText = err.message || '再来一局失败';
+        this.statusText = toUserMessage(err, '再来一局失败');
       })
       .finally(() => {
         this.restartSubmitting = false;
@@ -489,7 +490,7 @@ class OnlineGameScene {
     this.runtime.manager.render();
     this.runtime.cloud.surrenderRoom(this.roomId)
       .catch(err => {
-        this.statusText = err.message || '投降失败，请重试';
+        this.statusText = toUserMessage(err, '投降失败');
       })
       .finally(() => {
         this.surrenderSubmitting = false;

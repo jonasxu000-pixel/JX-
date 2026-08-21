@@ -9,6 +9,10 @@
       {
         "value": "cloudfunctions",
         "type": "folder"
+      },
+      {
+        "value": "assets/qiyu-gomoku-icon-rc14.png",
+        "type": "file"
       }
     ],
     "include": []

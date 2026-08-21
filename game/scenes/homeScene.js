@@ -10,6 +10,7 @@ const {
 const { showToast } = require('../../utils/clipboard');
 const { drawAvatar } = require('../renderers/avatarRenderer');
 const { getContentTop } = require('../../utils/safeArea');
+const { toUserMessage } = require('../../utils/userFacingError');
 
 class HomeScene {
   constructor(runtime) {
@@ -54,7 +55,7 @@ class HomeScene {
         }
       })
       .catch(err => {
-        showToast(this.runtime.wx, err.message || '微信登录失败，请重试');
+        showToast(this.runtime.wx, toUserMessage(err, '微信登录失败'));
       })
       .finally(() => {
         this.loginLoading = false;

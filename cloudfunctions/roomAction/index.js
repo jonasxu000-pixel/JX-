@@ -19,7 +19,7 @@ const ROOM_SCHEMA_VERSION = 2;
 const WAITING_ROOM_TTL_MS = 30 * 60 * 1000;
 const ACTIVE_ROOM_TTL_MS = 6 * 60 * 60 * 1000;
 const CLEANUP_BATCH_SIZE = 20;
-const ROOM_ACTION_VERSION = 'roomAction-20260821-private-room-view-6';
+const ROOM_ACTION_VERSION = 'roomAction-20260821-safe-errors-7';
 const DIAGNOSTIC_ACTIONS = new Set([
   'selfTestMove',
   'selfTestMatch',
@@ -1060,7 +1060,7 @@ exports.main = async (event = {}) => {
     console.error('roomAction failed:', err);
     return {
       success: false,
-      error: err.message || String(err),
+      error: '房间服务暂时不可用，请稍后重试',
     };
   }
 };

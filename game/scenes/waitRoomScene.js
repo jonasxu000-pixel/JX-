@@ -4,6 +4,7 @@ const { drawPill, drawRoomCodeCard } = require('../renderers/cardRenderer');
 const { COLORS } = require('../design/theme');
 const { copyText, showToast } = require('../../utils/clipboard');
 const { shareRoom } = require('../../utils/share');
+const { toUserMessage } = require('../../utils/userFacingError');
 
 const ROOM_POLL_INTERVAL = 1200;
 
@@ -64,7 +65,7 @@ class WaitRoomScene {
       })
       .catch(err => {
         if (!this.active) return;
-        this.error = err.message || '房间同步失败';
+        this.error = toUserMessage(err, '房间同步失败');
         this.runtime.manager.render();
       })
       .finally(() => {
@@ -227,6 +228,7 @@ class WaitRoomScene {
       drawLabel(ctx, this.error || this.copyMessage, width / 2, 334, 'center', {
         size: 13,
         color: this.error ? COLORS.danger : COLORS.inkMuted,
+        maxWidth: width - 72,
       });
     }
 

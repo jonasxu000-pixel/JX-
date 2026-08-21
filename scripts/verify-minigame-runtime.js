@@ -273,6 +273,10 @@ function verifyPrivacyAuthorizationFailure() {
   assert(!scene.userInfoButton, 'native user-info button must wait for privacy authorization');
   assert(wx.lastModal && wx.lastModal.title === '需要隐私授权',
     'privacy refusal must show a clear recovery message');
+  assert(wx.lastModal.content.includes('系统默认头像和自定义昵称'),
+    'privacy refusal must explain the non-sensitive fallback');
+  assert(wx.lastModal.content.includes('相册头像时'),
+    'privacy refusal must not imply album access can bypass privacy consent');
 }
 
 function verifyOnlinePlayerProfiles() {
@@ -1107,7 +1111,8 @@ async function verifyCreateFailureCanRetry() {
   scene.onEnter();
   await flush();
   await flush();
-  assert(scene.error === '网络暂不可用', 'create failure must show its actionable error');
+  assert(scene.error === '网络连接不稳定，请检查网络后重试',
+    'create failure must show a stable actionable network error');
   assert(!scene.loading, 'create failure must unlock the retry action');
 
   scene.createRoom();

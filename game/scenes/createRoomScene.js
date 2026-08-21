@@ -2,6 +2,7 @@ const { drawButton } = require('../renderers/buttonRenderer');
 const { drawTitle, drawSubtitle, drawLabel } = require('../renderers/textRenderer');
 const { drawCard, drawPill } = require('../renderers/cardRenderer');
 const { COLORS } = require('../design/theme');
+const { toUserMessage } = require('../../utils/userFacingError');
 
 class CreateRoomScene {
   constructor(runtime) {
@@ -52,7 +53,7 @@ class CreateRoomScene {
       })
       .catch(err => {
         if (!this.active) return;
-        this.error = err.message || '创建房间失败';
+        this.error = toUserMessage(err, '创建房间失败');
       })
       .finally(() => {
         this.clearSlowTimer();
@@ -114,6 +115,7 @@ class CreateRoomScene {
         bold: true,
         size: 16,
         color: this.error ? COLORS.danger : COLORS.ink,
+        maxWidth: width - 96,
       },
     );
     drawLabel(
@@ -125,6 +127,7 @@ class CreateRoomScene {
       {
         size: 14,
         color: this.error ? COLORS.danger : COLORS.inkMuted,
+        maxWidth: width - 96,
       },
     );
 

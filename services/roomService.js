@@ -2,27 +2,13 @@
  * Room service: client wrapper for cloud room operations.
  */
 
+const { toUserMessage } = require('../utils/userFacingError');
+
 function assertCloudResult(res, fallbackMessage) {
   if (!res.result || !res.result.success) {
     throw new Error((res.result && res.result.error) || fallbackMessage);
   }
   return res.result;
-}
-
-function normalizeCloudError(err, fallbackMessage) {
-  const rawMessage = err && err.message ? err.message : String(err || '');
-
-  // 开发者工具未以正式 AppID 打开工程时，云调用会返回一段内部错误串。
-  // 不把该串直接展示给玩家，改为能帮助开发者定位的明确提示。
-  if (/appid missing/i.test(rawMessage)) {
-    return '当前开发环境未绑定正式 AppID，请重新打开项目后再试';
-  }
-
-  if (/env|environment/i.test(rawMessage)) {
-    return '云环境未连接，请检查开发者工具的云开发环境';
-  }
-
-  return rawMessage || fallbackMessage;
 }
 
 function callRoomAction(data, fallbackMessage) {
@@ -32,7 +18,7 @@ function callRoomAction(data, fallbackMessage) {
 
   return wx.cloud.callFunction({ name: 'roomAction', data })
     .then(res => assertCloudResult(res, fallbackMessage))
-    .catch(err => Promise.reject(new Error(normalizeCloudError(err, fallbackMessage))));
+    .catch(err => Promise.reject(new Error(toUserMessage(err, fallbackMessage))));
 }
 
 function createRoom(playerProfile) {
@@ -88,7 +74,7 @@ function watchRoom(viewId, callback, errorCallback) {
     },
     onError(err) {
       if (errorCallback) {
-        errorCallback(err);
+        errorCallback(new Error(toUserMessage(err, '房间同步失败')));
       } else {
         console.error('房间监听错误:', err);
       }
@@ -99,7 +85,9 @@ function watchRoom(viewId, callback, errorCallback) {
 function getRoom(viewId) {
   assertViewId(viewId);
   const db = wx.cloud.database();
-  return db.collection('roomViews').doc(viewId).get().then(res => res.data);
+  return db.collection('roomViews').doc(viewId).get()
+    .then(res => res.data)
+    .catch(err => Promise.reject(new Error(toUserMessage(err, '房间同步失败'))));
 }
 
 function placePiece(roomId, row, col) {

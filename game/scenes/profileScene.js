@@ -230,7 +230,7 @@ class ProfileScene {
     if (wxApi && typeof wxApi.showModal === 'function') {
       wxApi.showModal({
         title: '需要隐私授权',
-        content: '同步微信头像昵称前，需要先同意《用户隐私保护指引》。你也可以继续使用相册头像和自定义昵称。',
+        content: '同步微信头像昵称前，需要先同意《用户隐私保护指引》。你仍可使用系统默认头像和自定义昵称；选择相册头像时，微信仍会按指引请求授权。',
         showCancel: false,
         confirmText: '知道了',
       });
@@ -289,14 +289,11 @@ class ProfileScene {
     }
     if (wxApi && typeof wxApi.showModal === 'function') {
       const isDenied = errorDetail.includes('deny') || errorDetail.includes('cancel');
-      const diagnostic = errorDetail
-        ? `\n\n微信返回：${errorDetail.slice(0, 80)}`
-        : '';
       wxApi.showModal({
         title: '微信未返回头像昵称',
         content: isDenied
-          ? '你已取消授权。仍可使用相册头像和自定义游戏昵称。'
-          : `请确认小游戏后台已声明“昵称、头像”并开启“隐私授权弹窗”。完成前可使用相册头像和自定义昵称。${diagnostic}`,
+          ? '你已取消微信资料授权。仍可使用系统默认头像和自定义昵称；选择相册头像时，微信仍会按指引请求授权。'
+          : '请确认小游戏后台已声明“微信昵称、微信头像”并启用官方隐私授权弹窗。当前仍可使用系统默认头像和自定义昵称。',
         showCancel: false,
         confirmText: '知道了',
       });

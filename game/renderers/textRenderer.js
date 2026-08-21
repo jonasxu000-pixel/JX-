@@ -21,11 +21,26 @@ function drawLabel(ctx, text, x, y, align = 'left', options = {}) {
   ctx.font = `${options.bold ? '700 ' : '400 '}${options.size || 16}px "PingFang SC", "Microsoft YaHei", sans-serif`;
   ctx.textAlign = align;
   ctx.textBaseline = 'middle';
-  ctx.fillText(text, x, y);
+  ctx.fillText(fitText(ctx, text, options.maxWidth), x, y);
+}
+
+function fitText(ctx, text, maxWidth) {
+  const value = String(text == null ? '' : text);
+  if (!maxWidth || typeof ctx.measureText !== 'function' || ctx.measureText(value).width <= maxWidth) {
+    return value;
+  }
+
+  const suffix = '…';
+  let result = value;
+  while (result && ctx.measureText(`${result}${suffix}`).width > maxWidth) {
+    result = result.slice(0, -1);
+  }
+  return result ? `${result}${suffix}` : suffix;
 }
 
 module.exports = {
   drawTitle,
   drawSubtitle,
   drawLabel,
+  fitText,
 };

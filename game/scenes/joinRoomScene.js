@@ -3,6 +3,7 @@ const { drawTitle, drawSubtitle, drawLabel } = require('../renderers/textRendere
 const { drawCard, drawPill, roundedRectPath } = require('../renderers/cardRenderer');
 const { COLORS } = require('../design/theme');
 const { extractRoomId, readClipboardText } = require('../../utils/clipboard');
+const { toUserMessage } = require('../../utils/userFacingError');
 
 class JoinRoomScene {
   constructor(runtime, params) {
@@ -228,7 +229,7 @@ class JoinRoomScene {
       })
       .catch(err => {
         if (!this.active) return;
-        this.error = err.message || '加入失败';
+        this.error = toUserMessage(err, '加入失败');
       })
       .finally(() => {
         if (!this.active) return;

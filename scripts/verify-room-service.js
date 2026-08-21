@@ -63,6 +63,32 @@ function installWxMock() {
   };
 }
 
+function installDatabaseErrorMock() {
+  global.wx = {
+    cloud: {
+      database() {
+        return {
+          collection() {
+            return {
+              doc() {
+                return {
+                  get() {
+                    return Promise.reject(new Error('permission denied for document read'));
+                  },
+                  watch(options) {
+                    options.onError(new Error('request:fail timeout'));
+                    return { close() {} };
+                  },
+                };
+              },
+            };
+          },
+        };
+      },
+    },
+  };
+}
+
 async function main() {
   installWxMock();
 
@@ -94,6 +120,23 @@ async function main() {
     invalidRejected = /访问凭证/.test(err.message);
   }
   assert(invalidRejected, 'six digit room ids must not be accepted as database read credentials');
+
+  installDatabaseErrorMock();
+  let readError = '';
+  try {
+    await roomService.getRoom(VIEW_ID);
+  } catch (err) {
+    readError = err.message;
+  }
+  assert(readError === '房间服务权限异常，请联系管理员后重试',
+    'direct database read errors must be localized');
+
+  let watchError = '';
+  roomService.watchRoom(VIEW_ID, () => {}, err => {
+    watchError = err.message;
+  });
+  assert(watchError === '网络连接不稳定，请检查网络后重试',
+    'realtime watch errors must be localized');
 
   console.log('room service privacy verification ok');
 }
