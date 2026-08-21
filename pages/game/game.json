@@ -1,6 +1,0 @@
-{
-  "navigationBarTitleText": "五子棋对战",
-  "usingComponents": {
-    "board": "../../components/board/index"
-  }
-}

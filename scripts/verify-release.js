@@ -128,11 +128,12 @@ function verifySourceGuards() {
   assert(permissionDoc.includes('"write": false'), 'database permission guide must disable client writes');
   assert(projectConfig.setting.urlCheck === true, 'release build must keep URL validation enabled');
   assert(projectConfig.setting.minified === true, 'release build must enable JavaScript minification');
-  assert(ignored.includes('folder:pages'), 'release package must exclude Mini Program pages');
-  assert(ignored.includes('folder:components'), 'release package must exclude Mini Program components');
   assert(ignored.includes('folder:cloudfunctions'), 'release package must exclude cloud function source');
-  assert(ignored.includes('file:app.json'), 'release package must exclude the Mini Program manifest');
   assert(ignored.includes('folder:.codex-preview'), 'release package must exclude local preview artifacts');
+  ['app.js', 'app.json', 'app.wxss', 'sitemap.json', 'pages', 'components'].forEach(legacyPath => {
+    assert(!fs.existsSync(legacyPath),
+      `legacy Mini Program source must stay outside the Mini Game package: ${legacyPath}`);
+  });
 
   console.log('mini game release source guards ok');
 }

@@ -1,7 +1,0 @@
-<!--components/board/index.wxml-->
-<canvas
-  id="boardCanvas"
-  type="2d"
-  class="board-canvas"
-  bindtap="_onTap"
-/>

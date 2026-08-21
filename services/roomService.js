@@ -9,19 +9,40 @@ function assertCloudResult(res, fallbackMessage) {
   return res.result;
 }
 
+function normalizeCloudError(err, fallbackMessage) {
+  const rawMessage = err && err.message ? err.message : String(err || '');
+
+  // 开发者工具未以正式 AppID 打开工程时，云调用会返回一段内部错误串。
+  // 不把该串直接展示给玩家，改为能帮助开发者定位的明确提示。
+  if (/appid missing/i.test(rawMessage)) {
+    return '当前开发环境未绑定正式 AppID，请重新打开项目后再试';
+  }
+
+  if (/env|environment/i.test(rawMessage)) {
+    return '云环境未连接，请检查开发者工具的云开发环境';
+  }
+
+  return rawMessage || fallbackMessage;
+}
+
+function callRoomAction(data, fallbackMessage) {
+  if (!wx.cloud || typeof wx.cloud.callFunction !== 'function') {
+    return Promise.reject(new Error('当前环境暂不支持云端好友房'));
+  }
+
+  return wx.cloud.callFunction({ name: 'roomAction', data })
+    .then(res => assertCloudResult(res, fallbackMessage))
+    .catch(err => Promise.reject(new Error(normalizeCloudError(err, fallbackMessage))));
+}
+
 function createRoom(playerProfile) {
-  return wx.cloud.callFunction({
-    name: 'roomAction',
-    data: { action: 'createRoom', playerProfile },
-  }).then(res => assertCloudResult(res, '创建失败').roomId);
+  return callRoomAction({ action: 'createRoom', playerProfile }, '创建失败')
+    .then(result => result.roomId);
 }
 
 function joinRoom(roomId, playerProfile) {
-  return wx.cloud.callFunction({
-    name: 'roomAction',
-    data: { action: 'joinRoom', roomId, playerProfile },
-  }).then(res => {
-    const result = assertCloudResult(res, '加入失败');
+  return callRoomAction({ action: 'joinRoom', roomId, playerProfile }, '加入失败')
+    .then(result => {
     return {
       roomId,
       role: result.role,
@@ -64,33 +85,20 @@ function getRoom(roomId) {
 }
 
 function placePiece(roomId, row, col) {
-  return wx.cloud.callFunction({
-    name: 'roomAction',
-    data: { action: 'placePiece', roomId, row, col },
-  }).then(res => assertCloudResult(res, '落子失败'));
+  return callRoomAction({ action: 'placePiece', roomId, row, col }, '落子失败');
 }
 
 function restartRoom(roomId) {
-  return wx.cloud.callFunction({
-    name: 'roomAction',
-    data: { action: 'restartRoom', roomId },
-  }).then(res => assertCloudResult(res, '再来一局失败'));
+  return callRoomAction({ action: 'restartRoom', roomId }, '再来一局失败');
 }
 
 function surrenderRoom(roomId) {
-  return wx.cloud.callFunction({
-    name: 'roomAction',
-    data: { action: 'surrenderRoom', roomId },
-  }).then(res => assertCloudResult(res, '投降失败'));
+  return callRoomAction({ action: 'surrenderRoom', roomId }, '投降失败');
 }
 
 function leaveRoom(roomId) {
-  return wx.cloud.callFunction({
-    name: 'roomAction',
-    data: { action: 'leaveRoom', roomId },
-  }).then(res => {
-    assertCloudResult(res, '离开失败');
-  });
+  return callRoomAction({ action: 'leaveRoom', roomId }, '离开失败')
+    .then(() => undefined);
 }
 
 function getOpenId() {
