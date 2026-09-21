@@ -184,9 +184,13 @@ function verifySourceGuards() {
   assert(projectConfig.setting.urlCheck === true, 'release build must keep URL validation enabled');
   assert(projectConfig.setting.minified === true, 'release build must enable JavaScript minification');
   assert(ignored.includes('folder:cloudfunctions'), 'release package must exclude cloud function source');
+  assert(ignored.includes('folder:scripts') && ignored.includes('folder:docs'),
+    'release package must exclude Node test scripts and project documentation');
   assert(ignored.includes('folder:.codex-preview'), 'release package must exclude local preview artifacts');
   assert(ignored.includes('file:assets/qiyu-gomoku-icon-rc14.png'),
     'platform icon source must stay outside the Mini Game code package');
+  assert(ignored.includes('file:assets/qiyu-gomoku-brand-v2.png'),
+    'platform brand material must stay outside the Mini Game code package');
   const icon = fs.readFileSync('assets/qiyu-gomoku-icon-rc14.png');
   const iconWidth = icon.readUInt32BE(16);
   const iconHeight = icon.readUInt32BE(20);

@@ -13,6 +13,7 @@ const { COLORS } = require('../design/theme');
 const { getContentTop } = require('../../utils/safeArea');
 const { toUserMessage } = require('../../utils/userFacingError');
 const { getStoredPlayer } = require('../../utils/playerSession');
+const { showToast } = require('../../utils/clipboard');
 
 class OnlineGameScene {
   constructor(runtime, params) {
@@ -40,6 +41,8 @@ class OnlineGameScene {
     this.restartTimer = null;
     this.boardRect = null;
     this.active = false;
+    this.leaving = false;
+    this.exited = false;
     this.localPlayer = getStoredPlayer(runtime.wx);
     this.hostPlayer = createDisplayPlayer(null, '黑棋棋手');
     this.guestPlayer = createDisplayPlayer(null, '白棋棋手');
@@ -54,6 +57,7 @@ class OnlineGameScene {
 
   onResume() {
     this.active = true;
+    if (this.leaving) return;
     this.loadRoom();
     this.startWatch();
   }
@@ -65,6 +69,7 @@ class OnlineGameScene {
   }
 
   onExit() {
+    this.exited = true;
     this.active = false;
     this.clearWatch();
     this.clearRestart();
@@ -100,7 +105,7 @@ class OnlineGameScene {
   }
 
   applyRoom(roomData) {
-    if (!this.active) return;
+    if (!this.active || this.leaving) return;
 
     if (roomData && roomData.status === 'waiting' && this.role === 'host') {
       this.runtime.manager.go('waitRoom', {
@@ -207,7 +212,8 @@ class OnlineGameScene {
         y: this.boardRect.y + this.boardRect.height + 24,
         width: 240,
         height: 46,
-        text: '退出本局',
+        text: this.leaving ? '正在退出…' : '退出本局',
+        disabled: this.leaving,
         variant: 'ghost',
         onTap: () => this.leaveToHome(),
       });
@@ -225,11 +231,12 @@ class OnlineGameScene {
         onAvatarReady: () => this.runtime.manager.render(),
         primaryAction: {
           text: this.getRestartButtonText(),
-          disabled: this.restartSubmitting || this.restartReady,
+          disabled: this.leaving || this.restartSubmitting || this.restartReady,
           onTap: () => this.restartRoom(),
         },
         secondaryAction: {
-          text: '返回首页',
+          text: this.leaving ? '正在退出…' : '返回首页',
+          disabled: this.leaving,
           onTap: () => this.leaveToHome(),
         },
       });
@@ -420,6 +427,7 @@ class OnlineGameScene {
   }
 
   handleTouch(x, y) {
+    if (this.leaving) return;
     if (!this.boardRect || this.boardLocked || this.syncing || this.moveSubmitting) return;
     const grid = boardRenderer.hitTest(x, y, this.boardRect);
     if (!grid || this.board[grid.row][grid.col] !== board.EMPTY) return;
@@ -442,6 +450,7 @@ class OnlineGameScene {
   }
 
   restartRoom() {
+    if (this.leaving) return;
     if (!this.gameOver || this.restartSubmitting) return;
     this.restartSubmitting = true;
     this.statusText = '正在发送再战确认…';
@@ -463,6 +472,7 @@ class OnlineGameScene {
   }
 
   confirmSurrender() {
+    if (this.leaving) return;
     if (this.gameOver || this.surrenderSubmitting) return;
     const wxApi = this.runtime.wx;
     if (!wxApi || typeof wxApi.showModal !== 'function') {
@@ -482,6 +492,7 @@ class OnlineGameScene {
   }
 
   submitSurrender() {
+    if (this.leaving) return;
     if (this.gameOver || this.surrenderSubmitting) return;
     this.surrenderSubmitting = true;
     this.syncing = true;
@@ -498,12 +509,25 @@ class OnlineGameScene {
       });
   }
 
-  leaveToHome() {
-    this.active = false;
+  async leaveToHome() {
+    if (this.leaving || this.exited) return;
+    this.leaving = true;
+    this.boardLocked = true;
     this.clearWatch();
     this.clearRestart();
-    this.runtime.cloud.leaveRoom(this.roomId)
-      .finally(() => this.runtime.manager.go('home'));
+    this.runtime.manager.render();
+    let failed = false;
+    try {
+      await this.runtime.cloud.leaveRoom(this.roomId);
+      if (!this.exited) this.runtime.manager.go('home');
+    } catch (err) {
+      failed = true;
+      this.statusText = '退出未确认，请检查网络后重试';
+      if (!this.exited && this.active) showToast(this.runtime.wx, this.statusText);
+    } finally {
+      this.leaving = false;
+      if (failed && !this.exited && this.active) this.onResume();
+    }
   }
 }
 

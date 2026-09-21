@@ -1180,7 +1180,58 @@ async function verifyCopyFailureFeedback() {
   assert(!scene.copying, 'copy button must unlock after failure');
 }
 
+async function verifyRoomLeaveRecovery(SceneType, method) {
+  const transitions = [];
+  const toasts = [];
+  let rejectLeave;
+  let resolveLeave;
+  let calls = 0;
+  const scene = new SceneType({
+    wx: { showToast: options => toasts.push(options) },
+    manager: { render() {}, go: name => transitions.push(name) },
+    cloud: {
+      leaveRoom() {
+        calls += 1;
+        return new Promise((resolve, reject) => { resolveLeave = resolve; rejectLeave = reject; });
+      },
+    },
+  }, { roomId: '123456', viewId: TEST_VIEW_ID });
+  let resumed = 0;
+  scene.loadRoom = () => { resumed += 1; return Promise.resolve(); };
+  scene.startWatch = () => {};
+  if (scene.startPolling) scene.startPolling = () => {};
+  scene.active = true;
+  const first = scene[method]();
+  scene[method]();
+  assert(scene.leaving, `${method} must lock duplicate leave requests`);
+  await flush();
+  assert(calls === 1, `${method} must send only one request`);
+  scene.applyRoom({ status: 'playing' });
+  assert(transitions.length === 0, `${method} must suppress room transitions while leaving`);
+  scene.onHide();
+  scene.onResume();
+  assert(resumed === 0, `${method} must not restart sync during pending leave`);
+  rejectLeave(new Error('internal network detail'));
+  await first;
+  assert(!scene.leaving && scene.active, `${method} must allow retry after failure`);
+  assert(transitions.length === 0, `${method} must not pretend a failed leave succeeded`);
+  assert(resumed === 1 && toasts.length === 1, `${method} must resume sync and explain failure`);
+  const retry = scene[method]();
+  await flush();
+  resolveLeave();
+  await retry;
+  assert(transitions.length === 1 && transitions[0] === 'home', `${method} must return home on success`);
+  const stale = scene[method]();
+  await flush();
+  scene.onExit();
+  resolveLeave();
+  await stale;
+  assert(transitions.length === 1, `${method} must ignore a late response after scene exit`);
+}
+
 async function main() {
+  await verifyRoomLeaveRecovery(WaitRoomScene, 'leave');
+  await verifyRoomLeaveRecovery(OnlineGameScene, 'leaveToHome');
   verifyRuntimeBoot();
   verifyForegroundCanvasRecovery();
   verifyButtonReleaseSemantics();

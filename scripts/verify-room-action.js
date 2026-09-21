@@ -6,6 +6,7 @@ const roomViews = new Map();
 let currentOpenId = '';
 let transactionQueue = Promise.resolve();
 let transactionConflictsRemaining = 0;
+let removeFailureCollection = '';
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -86,6 +87,7 @@ const db = {
             return Promise.resolve({ _id: id });
           },
           remove() {
+            if (name === removeFailureCollection) return Promise.reject(new Error('internal delete failure'));
             store.delete(id);
             return Promise.resolve({ stats: { removed: 1 } });
           },
@@ -388,6 +390,8 @@ async function verifyLeaveLocksOpponent(roomAction) {
   await call(roomAction, 'host-openid', { action: 'leaveRoom', roomId: hostLeaveRoomId });
   assert(!rooms.has(hostLeaveRoomId), 'host leave must close the room');
   assert(!roomViews.has(hostLeaveViewId), 'host leave must remove the public room view');
+  await call(roomAction, 'host-openid', { action: 'leaveRoom', roomId: hostLeaveRoomId });
+  await call(roomAction, 'guest-openid', { action: 'leaveRoom', roomId: hostLeaveRoomId });
 }
 
 async function verifySurrender(roomAction) {
@@ -591,13 +595,55 @@ async function verifyDiagnosticsDisabledByDefault(roomAction) {
 async function verifyHealthPing(roomAction) {
   delete process.env.ENABLE_ROOM_DIAGNOSTICS;
   const result = await call(roomAction, 'host-openid', { action: 'ping' });
-  assert(result.version === 'roomAction-20260821-safe-errors-7',
+  assert(result.version === 'roomAction-20260921-release-8',
     'health ping should expose deployed version');
+}
+
+async function verifyUnexpectedTransactionErrors(roomAction) {
+  const originalTransaction = db.runTransaction;
+  const originalError = console.error;
+  const logged = [];
+  db.runTransaction = async () => { throw new Error('internal database detail'); };
+  console.error = (...args) => logged.push(args);
+  try {
+    for (const action of ['joinRoom', 'placePiece', 'restartRoom', 'surrenderRoom', 'leaveRoom']) {
+      currentOpenId = 'host-openid';
+      const result = await roomAction.main({ action, roomId: '123456', row: 7, col: 7 });
+      assert(result.success === false, `${action} must return a controlled failure`);
+      assert(result.error === '房间服务暂时不可用，请稍后重试', `${action} must hide internal errors`);
+    }
+    assert(logged.length === 5, 'all unexpected failures must remain visible in server logs');
+  } finally {
+    db.runTransaction = originalTransaction;
+    console.error = originalError;
+  }
+}
+
+async function verifyFailedRoomRemoval(roomAction) {
+  const originalError = console.error;
+  console.error = () => {};
+  try {
+    for (const collection of ['roomViews', 'rooms']) {
+      const created = await call(roomAction, 'host-openid', { action: 'createRoom' });
+      removeFailureCollection = collection;
+      currentOpenId = 'host-openid';
+      const result = await roomAction.main({ action: 'leaveRoom', roomId: created.roomId });
+      assert(result.success === false, `failed ${collection} removal must not report exit success`);
+      assert(result.error === '房间服务暂时不可用，请稍后重试', 'removal failure must use safe error');
+      removeFailureCollection = '';
+    }
+  } finally {
+    removeFailureCollection = '';
+    console.error = originalError;
+  }
 }
 
 async function main() {
   installMocks();
   const roomAction = loadRoomAction();
+
+  await verifyUnexpectedTransactionErrors(roomAction);
+  await verifyFailedRoomRemoval(roomAction);
 
   await verifyHostBlackWin(roomAction);
   await verifyGuestWhiteWin(roomAction);

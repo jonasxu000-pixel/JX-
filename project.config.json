@@ -3,6 +3,14 @@
   "packOptions": {
     "ignore": [
       {
+        "value": "scripts",
+        "type": "folder"
+      },
+      {
+        "value": "docs",
+        "type": "folder"
+      },
+      {
         "value": ".codex-preview",
         "type": "folder"
       },
@@ -12,6 +20,10 @@
       },
       {
         "value": "assets/qiyu-gomoku-icon-rc14.png",
+        "type": "file"
+      },
+      {
+        "value": "assets/qiyu-gomoku-brand-v2.png",
         "type": "file"
       }
     ],

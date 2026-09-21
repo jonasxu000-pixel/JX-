@@ -22,6 +22,8 @@ class WaitRoomScene {
     this.loadInFlight = false;
     this.transitionStarted = false;
     this.active = false;
+    this.leaving = false;
+    this.exited = false;
     this.copying = false;
     this.copyMessage = '';
   }
@@ -36,6 +38,7 @@ class WaitRoomScene {
 
   onResume() {
     this.active = true;
+    if (this.leaving) return;
     this.transitionStarted = false;
     this.loadRoom();
     this.startWatch();
@@ -50,6 +53,7 @@ class WaitRoomScene {
   }
 
   onExit() {
+    this.exited = true;
     this.active = false;
     this.clearWatch();
     this.clearRestart();
@@ -89,7 +93,7 @@ class WaitRoomScene {
   }
 
   applyRoom(roomData) {
-    if (!this.active) return;
+    if (!this.active || this.leaving) return;
     if (!roomData) {
       this.error = '房间已关闭';
       this.runtime.manager.render();
@@ -152,13 +156,25 @@ class WaitRoomScene {
     this.pollTimer = null;
   }
 
-  leave() {
-    this.active = false;
+  async leave() {
+    if (this.leaving || this.exited) return;
+    this.leaving = true;
     this.clearWatch();
     this.clearRestart();
     this.clearPolling();
-    this.runtime.cloud.leaveRoom(this.roomId)
-      .finally(() => this.runtime.manager.go('home'));
+    this.runtime.manager.render();
+    let failed = false;
+    try {
+      await this.runtime.cloud.leaveRoom(this.roomId);
+      if (!this.exited) this.runtime.manager.go('home');
+    } catch (err) {
+      failed = true;
+      this.error = '退出未确认，请检查网络后重试';
+      if (!this.exited && this.active) showToast(this.runtime.wx, this.error);
+    } finally {
+      this.leaving = false;
+      if (failed && !this.exited && this.active) this.onResume();
+    }
   }
 
   copyRoomId() {
@@ -257,7 +273,8 @@ class WaitRoomScene {
       y: 494,
       width: buttonWidth,
       height: 50,
-      text: '离开房间',
+      text: this.leaving ? '正在离开…' : '离开房间',
+      disabled: this.leaving,
       variant: 'danger',
       onTap: () => this.leave(),
     });

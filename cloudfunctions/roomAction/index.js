@@ -19,7 +19,7 @@ const ROOM_SCHEMA_VERSION = 2;
 const WAITING_ROOM_TTL_MS = 30 * 60 * 1000;
 const ACTIVE_ROOM_TTL_MS = 6 * 60 * 60 * 1000;
 const CLEANUP_BATCH_SIZE = 20;
-const ROOM_ACTION_VERSION = 'roomAction-20260821-safe-errors-7';
+const ROOM_ACTION_VERSION = 'roomAction-20260921-release-8';
 const DIAGNOSTIC_ACTIONS = new Set([
   'selfTestMove',
   'selfTestMatch',
@@ -234,9 +234,9 @@ async function replaceRoomAndView(transaction, roomDoc, room, updates) {
 
 async function removeRoomAndView(transaction, roomDoc, room) {
   if (room && room.viewId) {
-    await transaction.collection('roomViews').doc(room.viewId).remove().catch(() => {});
+    await transaction.collection('roomViews').doc(room.viewId).remove();
   }
-  await roomDoc.remove().catch(() => {});
+  await roomDoc.remove();
 }
 
 async function cleanupExpiredRooms() {
@@ -543,7 +543,14 @@ async function leaveRoomForOpenId(targetRoomId, openId) {
 
   return runTransactionWithRetry(async transaction => {
     const roomDoc = transaction.collection('rooms').doc(targetRoomId);
-    const roomRes = await roomDoc.get();
+    const roomRes = await roomDoc.get().catch(err => {
+      // 已删除的房间视为退出完成；网络/权限错误仍必须交给外层错误边界。
+      const message = String(err && (err.message || err.errMsg) || '');
+      if (/document.*(?:not found|not exist|does not exist)/i.test(message)) {
+        return { data: null };
+      }
+      throw err;
+    });
     const room = roomRes.data;
     if (!room) return { success: true };
 
@@ -1029,16 +1036,16 @@ exports.main = async (event = {}) => {
       }
 
       case 'joinRoom':
-        return joinRoomForOpenId(roomId, callerOpenId, playerProfile);
+        return await joinRoomForOpenId(roomId, callerOpenId, playerProfile);
 
       case 'placePiece':
-        return placePieceForOpenId(roomId, row, col, callerOpenId);
+        return await placePieceForOpenId(roomId, row, col, callerOpenId);
 
       case 'restartRoom':
-        return restartRoomForOpenId(roomId, callerOpenId);
+        return await restartRoomForOpenId(roomId, callerOpenId);
 
       case 'surrenderRoom':
-        return surrenderRoomForOpenId(roomId, callerOpenId);
+        return await surrenderRoomForOpenId(roomId, callerOpenId);
 
       case 'updateRoom':
         return {
@@ -1047,7 +1054,7 @@ exports.main = async (event = {}) => {
         };
 
       case 'leaveRoom': {
-        return leaveRoomForOpenId(roomId, callerOpenId);
+        return await leaveRoomForOpenId(roomId, callerOpenId);
       }
 
       default:
