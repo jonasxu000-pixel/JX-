@@ -4,6 +4,7 @@ const { drawCard, drawPill, roundedRectPath } = require('../renderers/cardRender
 const { COLORS } = require('../design/theme');
 const { extractRoomId, readClipboardText } = require('../../utils/clipboard');
 const { toUserMessage } = require('../../utils/userFacingError');
+const { getContentTop } = require('../../utils/safeArea');
 
 class JoinRoomScene {
   constructor(runtime, params) {
@@ -71,43 +72,45 @@ class JoinRoomScene {
       onTap: () => manager.go('home'),
     });
 
-    drawSubtitle(ctx, '已复制房间号时，进入本页会自动识别', width / 2, layout.footerY);
+    drawLabel(ctx, '已复制房间号时，进入本页会自动识别', width / 2, layout.footerY, 'center', { size: 11, color: COLORS.inkMuted, maxWidth: width - 40 });
   }
 
   getLayout() {
-    if (this.runtime.height < 620) {
+    const top = getContentTop(this.runtime.wx);
+    const height = this.runtime.height - Math.max(0, (this.runtime.bottomInset || 18) - 18);
+    if (height - top < 560) {
       return {
-        titleY: 82,
-        subtitleY: 108,
-        cardY: 118,
-        cardHeight: 88,
-        slotY: 152,
+        titleY: top + 18,
+        subtitleY: top + 46,
+        cardY: top + 60,
+        cardHeight: 84,
+        slotY: top + 94,
         slotHeight: 42,
-        keypadY: 214,
+        keypadY: top + 156,
         keypadStep: 40,
         keyHeight: 38,
-        feedbackY: 378,
-        confirmY: 414,
-        backY: 466,
+        feedbackY: top + 328,
+        confirmY: top + 364,
+        backY: top + 416,
         actionHeight: 44,
-        footerY: 538,
+        footerY: height - 22,
       };
     }
     return {
-      titleY: 52,
-      subtitleY: 84,
-      cardY: 108,
+      titleY: top + 18,
+      subtitleY: top + 46,
+      cardY: top + 64,
       cardHeight: 98,
-      slotY: 148,
+      slotY: top + 104,
       slotHeight: 46,
-      keypadY: 226,
+      keypadY: top + 180,
       keypadStep: 48,
       keyHeight: 40,
-      feedbackY: 426,
-      confirmY: 474,
-      backY: 538,
+      feedbackY: top + 380,
+      confirmY: top + 422,
+      backY: top + 482,
       actionHeight: 50,
-      footerY: 620,
+      footerY: height - 22,
     };
   }
 

@@ -29,23 +29,26 @@ class LocalGameScene {
 
   render(ctx, input) {
     const { width, manager } = this.runtime;
-    this.boardRect = boardRenderer.getBoardRect(width, 116);
+    const safeTop = getContentTop(this.runtime.wx);
+    const boardTop = safeTop + 84;
+    this.boardRect = boardRenderer.getBoardRect(width, boardTop, this.runtime.height - boardTop - 100);
     const statusText = this.resultText || `轮到${board.pieceName(this.currentPlayer)}落子`;
 
-    drawLabel(ctx, '本机双人对战', 20, 38, 'left', { bold: true, size: 18 });
+    drawLabel(ctx, '同屏双人对战', 20, safeTop + 14, 'left', { bold: true, size: 21 });
     drawPill(ctx, {
       x: width - 114,
-      y: 24,
+      y: safeTop,
       width: 94,
       text: '同屏轮流',
       fill: COLORS.goldSoft,
       color: '#79551D',
     });
-    drawLabel(ctx, statusText, width / 2, 82, 'center', {
+    drawLabel(ctx, statusText, width / 2, safeTop + 59, 'center', {
       bold: true,
       color: this.gameOver ? COLORS.jade : COLORS.ink,
     });
     boardRenderer.drawBoard(ctx, this.board, this.lastMove, this.boardRect);
+    drawLabel(ctx, '自由五子棋 · 黑棋先行 · 无禁手', width / 2, this.boardRect.y + this.boardRect.height + 12, 'center', { size: 10, color: COLORS.inkMuted });
 
     if (!this.gameOver) {
       drawButton(ctx, input, {
@@ -97,6 +100,7 @@ class LocalGameScene {
     this.board[grid.row][grid.col] = piece;
     this.lastMove = { row: grid.row, col: grid.col, piece };
     this.history.push(this.lastMove);
+    if (this.runtime.feedback) this.runtime.feedback.move();
 
     if (board.checkWin(this.board, grid.row, grid.col, piece)) {
       this.gameOver = true;

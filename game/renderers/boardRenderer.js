@@ -34,6 +34,19 @@ function drawBoard(ctx, boardState, lastMove, rect) {
   ctx.lineWidth = 1;
   ctx.stroke();
 
+  // A fine inner frame and coordinates keep the board readable on small screens.
+  ctx.strokeStyle = 'rgba(255, 246, 219, 0.55)';
+  roundedRectPath(ctx, rect.x + 4, rect.y + 4, rect.width - 8, rect.height - 8, Math.max(3, radius - 2));
+  ctx.stroke();
+  ctx.fillStyle = '#795B2E';
+  ctx.font = `${Math.max(7, Math.min(10, cellSize * 0.48))}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (let i = 0; i < board.BOARD_SIZE; i += 1) {
+    ctx.fillText(String.fromCharCode(65 + i), rect.x + padding + i * cellSize, rect.y + padding * 0.43);
+    ctx.fillText(String(i + 1), rect.x + padding * 0.4, rect.y + padding + i * cellSize);
+  }
+
   ctx.strokeStyle = COLORS.boardLine;
   ctx.lineWidth = 1;
   ctx.beginPath();
@@ -67,9 +80,31 @@ function drawBoard(ctx, boardState, lastMove, rect) {
     ctx.arc(x, y, Math.max(2.2, cellSize * 0.115), 0, Math.PI * 2);
     ctx.fillStyle = COLORS.danger;
     ctx.fill();
+    if (board.checkWin(boardState, lastMove.row, lastMove.col, lastMove.piece)) {
+      const line = winningLine(boardState, lastMove);
+      if (line) {
+        ctx.beginPath();
+        ctx.moveTo(rect.x + padding + line[0].col * cellSize, rect.y + padding + line[0].row * cellSize);
+        ctx.lineTo(rect.x + padding + line[1].col * cellSize, rect.y + padding + line[1].row * cellSize);
+        ctx.strokeStyle = '#EAC87C'; ctx.lineWidth = Math.max(3, cellSize * 0.14);
+        ctx.stroke();
+      }
+    }
   }
 
   ctx.restore();
+}
+
+function winningLine(state, lastMove) {
+  for (const [dr, dc] of [[0,1],[1,0],[1,1],[1,-1]]) {
+    const ends = [-1, 1].map(sign => {
+      let row = lastMove.row; let col = lastMove.col;
+      while (board.isValidPos(row + dr * sign, col + dc * sign) && state[row + dr * sign][col + dc * sign] === lastMove.piece) { row += dr * sign; col += dc * sign; }
+      return { row, col };
+    });
+    if (Math.max(Math.abs(ends[0].row - ends[1].row), Math.abs(ends[0].col - ends[1].col)) >= 4) return ends;
+  }
+  return null;
 }
 
 function drawPiece(ctx, rect, row, col, piece) {

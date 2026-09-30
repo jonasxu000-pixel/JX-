@@ -146,9 +146,17 @@ function drawResultOverlay(ctx, input, options) {
     width: layout.cardWidth,
     height: layout.cardHeight,
     radius: 24,
-    fill: COLORS.surface,
-    stroke: COLORS.line,
+    fill: '#FFFCF5',
+    stroke: '#CDBB96',
   });
+  ctx.save();
+  ctx.strokeStyle = '#E4D7BC';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(layout.cardX + 24, layout.cardY + 112);
+  ctx.lineTo(layout.cardX + layout.cardWidth - 24, layout.cardY + 112);
+  ctx.stroke();
+  ctx.restore();
   drawSealBadge(ctx, {
     x: centerX,
     y: layout.cardY + 8,
@@ -164,6 +172,7 @@ function drawResultOverlay(ctx, input, options) {
   drawLabel(ctx, presentation.subtitle, centerX, layout.cardY + 99, 'center', {
     size: 13,
     color: COLORS.inkMuted,
+    maxWidth: layout.cardWidth - 40,
   });
 
   drawVersusPlayers(ctx, {

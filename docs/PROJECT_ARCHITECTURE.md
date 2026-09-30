@@ -15,12 +15,17 @@ game/
     theme.js                    全局颜色、圆角和布局规范
   core/                         输入、云调用、场景管理
   renderers/                    棋盘、按钮、卡片、头像、文字绘制
-  scenes/                       首页、玩家资料、本机、人机、创建、加入、等待、联机对战
+  scenes/                       首页、资料、同屏、人机/残局、关卡、成长、好友房
 services/
   roomService.js                客户端房间云接口与脱敏视图订阅
 utils/
   board.js                      棋盘与胜负基础规则
-  gomokuAi.js                   本地人机候选点、胜负优先与攻防评分
+  gomokuAi.js                   三档本地 AI、可取消分片搜索、胜负优先与回应分析
+  puzzles.js                    12 道原创残局、章节与解锁规则
+  progressStore.js              本机成长、战绩、目标、结算去重与体验设置
+  localMatchStore.js            一个最近未结束练棋存档与读取校验
+  roomSession.js                好友房恢复引用（实际状态仍向服务端读取）
+  gameFeedback.js               落子音效与轻震动，后台暂停
   onlineGameState.js            联机状态映射
   clipboard.js                  房间号复制、自动识别与 Toast 反馈
   share.js                      好友邀请参数、分享入口房间号解析
@@ -49,10 +54,15 @@ AiGameScene（玩家黑棋先手）
   → gomokuAi 收集已有棋子两格范围内候选点
   → 优先 AI 立即获胜 / 强制拦截玩家五连
   → 活四、冲四、活三和中心位置综合评分
+  → 入门宽松选点 / 进阶攻防评分 / 挑战对手回应分析
+  → 分片调度，重开、后台和离场取消旧搜索
   → AI 白棋落子并在本地完成胜负判定
+  → progressStore 记录有效结果 / localMatchStore 保存未结束棋局
 ```
 
 人机对局不调用云函数、不写云数据库，也不依赖在线玩家数量。
+
+残局复用 `AiGameScene`，通过 `puzzleGame` 场景参数注入初始局面和步数目标。`PuzzleListScene` 只负责章节、关卡选择与解锁展示；`GrowthScene` 展示本机记录与设置。成长记录不云同步，不用于联网段位或排行。
 
 好友邀请入口：
 

@@ -8,6 +8,9 @@ const JoinRoomScene = require('./scenes/joinRoomScene');
 const WaitRoomScene = require('./scenes/waitRoomScene');
 const OnlineGameScene = require('./scenes/onlineGameScene');
 const ProfileScene = require('./scenes/profileScene');
+const PuzzleListScene = require('./scenes/puzzleListScene');
+const GrowthScene = require('./scenes/growthScene');
+const { createFeedback } = require('../utils/gameFeedback');
 const { getSharedRoomId } = require('../utils/share');
 
 const CLOUD_ENV = 'cloud1-d3glf789q33b91507';
@@ -24,19 +27,24 @@ function createRuntime(wxApi) {
   const dpr = system.pixelRatio || 1;
   const width = system.screenWidth || 375;
   const height = system.screenHeight || 667;
+  const bottomInset = system.safeArea && Number.isFinite(system.safeArea.bottom)
+    ? Math.max(18, height - system.safeArea.bottom) : 18;
 
   canvas.width = width * dpr;
   canvas.height = height * dpr;
   if (ctx.scale) ctx.scale(dpr, dpr);
 
   const cloud = new CloudClient(wxApi);
+  const feedback = createFeedback(wxApi);
   const manager = new SceneManager({
     wx: wxApi,
     canvas,
     ctx,
     width,
     height,
+    bottomInset,
     cloud,
+    feedback,
   });
 
   manager.register('home', HomeScene);
@@ -47,6 +55,9 @@ function createRuntime(wxApi) {
   manager.register('waitRoom', WaitRoomScene);
   manager.register('onlineGame', OnlineGameScene);
   manager.register('profile', ProfileScene);
+  manager.register('puzzleList', PuzzleListScene);
+  manager.register('puzzleGame', AiGameScene);
+  manager.register('growth', GrowthScene);
 
   function start() {
     if (wxApi.cloud && wxApi.cloud.init) {
@@ -83,7 +94,7 @@ function createRuntime(wxApi) {
       });
     }
     if (wxApi.onHide) {
-      wxApi.onHide(() => manager.suspend());
+      wxApi.onHide(() => { feedback.pause(); manager.suspend(); });
     }
 
     let launchOptions = {};

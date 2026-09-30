@@ -14,6 +14,7 @@ const { getContentTop } = require('../../utils/safeArea');
 const { toUserMessage } = require('../../utils/userFacingError');
 const { getStoredPlayer } = require('../../utils/playerSession');
 const { showToast } = require('../../utils/clipboard');
+const roomSession = require('../../utils/roomSession');
 
 class OnlineGameScene {
   constructor(runtime, params) {
@@ -43,6 +44,7 @@ class OnlineGameScene {
     this.active = false;
     this.leaving = false;
     this.exited = false;
+    this.syncRevision = 0;
     this.localPlayer = getStoredPlayer(runtime.wx);
     this.hostPlayer = createDisplayPlayer(null, '黑棋棋手');
     this.guestPlayer = createDisplayPlayer(null, '白棋棋手');
@@ -51,6 +53,7 @@ class OnlineGameScene {
 
   onEnter() {
     this.active = true;
+    roomSession.save(this.runtime.wx, this);
     this.loadRoom();
     this.startWatch();
   }
@@ -77,14 +80,16 @@ class OnlineGameScene {
   }
 
   loadRoom() {
+    const revision = this.syncRevision;
     return this.runtime.cloud.getRoom(this.viewId)
       .then(roomData => {
-        if (this.active) this.applyRoom(roomData);
+        if (this.active && revision === this.syncRevision) this.applyRoom(roomData);
       })
       .catch(err => {
-        if (!this.active) return;
+        if (!this.active || revision !== this.syncRevision) return;
         this.statusText = toUserMessage(err, '房间同步失败');
         this.syncing = false;
+        this.boardLocked = true;
         this.runtime.manager.render();
       });
   }
@@ -99,13 +104,20 @@ class OnlineGameScene {
         if (this.active) this.applyRoom(roomData);
       },
       () => {
-        if (this.active) this.scheduleRestart();
+        if (this.active) {
+          this.boardLocked = true;
+          this.statusText = '连接中断，正在重新同步…';
+          this.runtime.manager.render();
+          this.scheduleRestart();
+        }
       },
     );
   }
 
   applyRoom(roomData) {
     if (!this.active || this.leaving) return;
+    this.syncRevision += 1;
+    if (!roomData) roomSession.clear(this.runtime.wx, this.roomId);
 
     if (roomData && roomData.status === 'waiting' && this.role === 'host') {
       this.runtime.manager.go('waitRoom', {
@@ -138,6 +150,8 @@ class OnlineGameScene {
     this.guestPlayer = this.getRoomDisplayPlayer(roomData && roomData.guest, 'guest');
 
     if (roomData && Array.isArray(roomData.board)) {
+      const next = roomData.lastMove;
+      if (this.lastMove && next && (next.row !== this.lastMove.row || next.col !== this.lastMove.col || next.piece !== this.lastMove.piece) && this.runtime.feedback) this.runtime.feedback.move(viewState.currentPlayer !== (this.role === 'host' ? board.BLACK : board.WHITE));
       this.board = normalizeBoard(roomData.board);
       this.lastMove = roomData.lastMove || null;
     }
@@ -519,6 +533,7 @@ class OnlineGameScene {
     let failed = false;
     try {
       await this.runtime.cloud.leaveRoom(this.roomId);
+      roomSession.clear(this.runtime.wx, this.roomId);
       if (!this.exited) this.runtime.manager.go('home');
     } catch (err) {
       failed = true;

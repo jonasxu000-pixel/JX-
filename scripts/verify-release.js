@@ -4,6 +4,7 @@ const fs = require('fs');
 const checks = [
   'scripts/verify-user-facing-errors.js',
   'scripts/verify-gomoku-ai.js',
+  'scripts/verify-practice.js',
   'scripts/verify-room-action.js',
   'scripts/verify-room-service.js',
   'scripts/verify-online-game-state.js',

@@ -3,6 +3,7 @@ const { drawTitle, drawSubtitle, drawLabel } = require('../renderers/textRendere
 const { drawCard, drawPill } = require('../renderers/cardRenderer');
 const { COLORS } = require('../design/theme');
 const { toUserMessage } = require('../../utils/userFacingError');
+const { getContentTop } = require('../../utils/safeArea');
 
 class CreateRoomScene {
   constructor(runtime) {
@@ -75,41 +76,42 @@ class CreateRoomScene {
 
   render(ctx, input) {
     const { width, manager } = this.runtime;
+    const offset = getContentTop(this.runtime.wx) - 34;
     const buttonWidth = Math.min(width - 64, 280);
     const x = (width - buttonWidth) / 2;
 
-    drawTitle(ctx, '创建好友房', width / 2, 58);
+    drawTitle(ctx, '创建好友房', width / 2, 58 + offset);
     drawSubtitle(
       ctx,
       this.error
         ? '没有创建成功，可以立即重试'
         : (this.slowResponse ? '云端正在响应，请稍候…' : '创建完成后将自动进入房间'),
       width / 2,
-      92,
+      92 + offset,
     );
 
     drawCard(ctx, {
       x: 32,
-      y: 150,
+      y: 150 + offset,
       width: width - 64,
       height: 196,
       fill: this.error ? COLORS.dangerSoft : COLORS.surface,
     });
     drawPill(ctx, {
       x: width / 2 - 62,
-      y: 174,
+      y: 174 + offset,
       width: 124,
       height: 30,
       text: this.error ? '创建未完成' : (this.slowResponse ? '云端连接中' : '正在创建'),
       fill: this.error ? '#F8DEDE' : COLORS.jadeSoft,
       color: this.error ? COLORS.danger : COLORS.jade,
     });
-    drawRoomPulse(ctx, width / 2, 238, Boolean(this.error));
+    drawRoomPulse(ctx, width / 2, 238 + offset, Boolean(this.error));
     drawLabel(
       ctx,
       this.error ? this.error : '正在为你准备一间好友房',
       width / 2,
-      292,
+      292 + offset,
       'center',
       {
         bold: true,
@@ -122,7 +124,7 @@ class CreateRoomScene {
       ctx,
       this.error ? '检查网络后重新创建，不会产生重复房间' : '成功后你会直接在房间内等待好友',
       width / 2,
-      320,
+      320 + offset,
       'center',
       {
         size: 14,
@@ -134,7 +136,7 @@ class CreateRoomScene {
     if (this.error) {
       drawButton(ctx, input, {
         x,
-        y: 382,
+        y: 382 + offset,
         width: buttonWidth,
         height: 52,
         text: '重新创建',
@@ -144,7 +146,7 @@ class CreateRoomScene {
 
     drawButton(ctx, input, {
       x,
-      y: this.error ? 450 : 382,
+      y: (this.error ? 450 : 382) + offset,
       width: buttonWidth,
       height: 48,
       text: '返回首页',
@@ -152,7 +154,7 @@ class CreateRoomScene {
       onTap: () => manager.go('home'),
     });
 
-    drawSubtitle(ctx, '进入房间后即可邀请好友或复制房间号', width / 2, this.error ? 526 : 458);
+    drawSubtitle(ctx, '进入房间后即可邀请好友或复制房间号', width / 2, Math.min(this.runtime.height - 22, (this.error ? 526 : 458) + offset));
   }
 }
 

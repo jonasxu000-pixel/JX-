@@ -5,6 +5,8 @@ const { COLORS } = require('../design/theme');
 const { copyText, showToast } = require('../../utils/clipboard');
 const { shareRoom } = require('../../utils/share');
 const { toUserMessage } = require('../../utils/userFacingError');
+const roomSession = require('../../utils/roomSession');
+const { getContentTop } = require('../../utils/safeArea');
 
 const ROOM_POLL_INTERVAL = 1200;
 
@@ -30,6 +32,7 @@ class WaitRoomScene {
 
   onEnter() {
     this.active = true;
+    roomSession.save(this.runtime.wx, this, 'waiting');
     this.transitionStarted = false;
     this.loadRoom();
     this.startWatch();
@@ -95,6 +98,7 @@ class WaitRoomScene {
   applyRoom(roomData) {
     if (!this.active || this.leaving) return;
     if (!roomData) {
+      roomSession.clear(this.runtime.wx, this.roomId);
       this.error = '房间已关闭';
       this.runtime.manager.render();
       return;
@@ -166,6 +170,7 @@ class WaitRoomScene {
     let failed = false;
     try {
       await this.runtime.cloud.leaveRoom(this.roomId);
+      roomSession.clear(this.runtime.wx, this.roomId);
       if (!this.exited) this.runtime.manager.go('home');
     } catch (err) {
       failed = true;
@@ -212,14 +217,19 @@ class WaitRoomScene {
 
   render(ctx, input) {
     const { width } = this.runtime;
+    const height = this.runtime.height - Math.max(0, (this.runtime.bottomInset || 18) - 18);
+    const top = getContentTop(this.runtime.wx);
+    const compact = height < 620;
+    const actionY = top + (compact ? 298 : 328);
+    const actionHeight = compact ? 44 : 50;
     const buttonWidth = Math.min(width - 64, 280);
     const x = (width - buttonWidth) / 2;
 
-    drawTitle(ctx, '好友房已开启', width / 2, 58);
-    drawSubtitle(ctx, '把邀请发给好友，棋局即将开始', width / 2, 92);
+    drawTitle(ctx, '好友房已开启', width / 2, top + 20);
+    drawSubtitle(ctx, '把邀请发给好友，棋局即将开始', width / 2, top + 49);
     drawPill(ctx, {
       x: width / 2 - 67,
-      y: 112,
+      y: top + 66,
       width: 134,
       text: '等待好友加入',
       fill: COLORS.goldSoft,
@@ -227,7 +237,7 @@ class WaitRoomScene {
     });
     drawRoomCodeCard(ctx, {
       x: 32,
-      y: 154,
+      y: top + 102,
       width: width - 64,
       roomId: this.roomId,
     });
@@ -236,12 +246,12 @@ class WaitRoomScene {
       ctx,
       this.role === 'host' ? '你的棋子：黑棋 · 先手' : '你的棋子：白棋 · 后手',
       width / 2,
-      304,
+      top + 254,
       'center',
       { bold: true, size: 14 },
     );
     if (this.error || this.copyMessage) {
-      drawLabel(ctx, this.error || this.copyMessage, width / 2, 334, 'center', {
+      drawLabel(ctx, this.error || this.copyMessage, width / 2, top + 282, 'center', {
         size: 13,
         color: this.error ? COLORS.danger : COLORS.inkMuted,
         maxWidth: width - 72,
@@ -250,18 +260,18 @@ class WaitRoomScene {
 
     drawButton(ctx, input, {
       x,
-      y: 366,
+      y: actionY,
       width: buttonWidth,
-      height: 50,
+      height: actionHeight,
       text: '邀请微信好友',
       onTap: () => this.inviteFriend(),
     });
 
     drawButton(ctx, input, {
       x,
-      y: 430,
+      y: actionY + 58,
       width: buttonWidth,
-      height: 50,
+      height: actionHeight,
       text: this.copying ? '正在复制...' : '复制房间号',
       disabled: this.copying,
       variant: 'secondary',
@@ -270,16 +280,16 @@ class WaitRoomScene {
 
     drawButton(ctx, input, {
       x,
-      y: 494,
+      y: actionY + 116,
       width: buttonWidth,
-      height: 50,
+      height: actionHeight,
       text: this.leaving ? '正在离开…' : '离开房间',
       disabled: this.leaving,
       variant: 'danger',
       onTap: () => this.leave(),
     });
 
-    drawSubtitle(ctx, '好友从分享卡片进入时，房间号会自动填写', width / 2, 580);
+    drawLabel(ctx, '好友从分享卡片进入时，房间号会自动填写', width / 2, height - 22, 'center', { size: 11, color: COLORS.inkMuted, maxWidth: width - 32 });
   }
 }
 

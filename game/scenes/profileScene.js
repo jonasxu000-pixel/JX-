@@ -61,12 +61,13 @@ class ProfileScene {
       x: 28,
       y: layout.cardY,
       width: width - 56,
-      height: 146,
+      height: layout.compact ? 122 : 146,
     });
     drawAvatar(ctx, this.runtime.wx, this.player, 48, layout.cardY + 31, 76, () => manager.render());
     drawLabel(ctx, formatProfileNickname(this.player && this.player.nickname), 144, layout.cardY + 43, 'left', {
       bold: true,
       size: 18,
+      maxWidth: width - 176,
     });
     drawPill(ctx, {
       x: 144,
@@ -77,9 +78,10 @@ class ProfileScene {
       fill: this.player ? COLORS.jadeSoft : COLORS.dangerSoft,
       color: this.player ? COLORS.jade : COLORS.danger,
     });
-    drawLabel(ctx, '好友对局中将展示此头像和昵称', 144, layout.cardY + 112, 'left', {
+    drawLabel(ctx, '好友对局中将展示此头像和昵称', 44, layout.cardY + 112, 'left', {
       size: 11,
       color: COLORS.inkMuted,
+      maxWidth: width - 88,
     });
 
     drawLabel(ctx, '资料设置', 36, layout.sectionTitleY, 'left', {
@@ -138,11 +140,17 @@ class ProfileScene {
       text: '保存并返回首页',
       onTap: () => manager.go('home'),
     });
-    drawSubtitle(ctx, '头像昵称可随时修改，仅用于游戏内展示', width / 2, layout.footerY);
+    drawLabel(ctx, '头像昵称可随时修改，仅用于游戏内展示', width / 2, layout.footerY, 'center', { size: 11, color: COLORS.inkMuted, maxWidth: width - 40 });
   }
 
   getLayout() {
     const safeTop = getContentTop(this.runtime.wx);
+    if (this.runtime.height - safeTop - (this.runtime.bottomInset || 18) < 550) return {
+      compact: true,
+      titleY: safeTop + 20, subtitleY: safeTop + 48, cardY: safeTop + 70,
+      sectionTitleY: safeTop + 210, syncY: safeTop + 230, quickActionY: safeTop + 288,
+      defaultAvatarY: safeTop + 344, saveY: safeTop + 398, footerY: safeTop + 462,
+    };
     return {
       titleY: safeTop + 22,
       subtitleY: safeTop + 48,

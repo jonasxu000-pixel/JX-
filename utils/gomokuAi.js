@@ -150,7 +150,7 @@ function compareMoves(left, right) {
   return left.col - right.col;
 }
 
-function selectMove(board, aiPiece = boardRules.WHITE, humanPiece = getOpponent(aiPiece)) {
+function selectMove(board, aiPiece = boardRules.WHITE, humanPiece = getOpponent(aiPiece), options = {}) {
   if (!Array.isArray(board) || isBoardFull(board)) return null;
   const candidates = collectCandidates(board);
   if (!candidates.length) return null;
@@ -186,7 +186,102 @@ function selectMove(board, aiPiece = boardRules.WHITE, humanPiece = getOpponent(
   });
 
   ranked.sort(compareMoves);
+  if (options.difficulty === 'easy' && !mustBlock.size) {
+    const safe = ranked.filter(move => move.score >= ranked[0].score * 0.55).slice(0, 5);
+    const random = typeof options.random === 'function' ? options.random() : Math.random();
+    return safe[Math.min(safe.length - 1, Math.max(0, Math.floor(random * safe.length)))];
+  }
   return ranked[0] || null;
+}
+
+// A cancellable, sliced search. Each yield leaves the private board intact.
+// Hard mode examines the opponent's replies; it is deliberately bounded for phones.
+function* analyze(state, aiPiece, humanPiece, difficulty, random) {
+  const candidates = collectCandidates(state);
+  const ranked = [];
+  const wins = [];
+  const blocks = [];
+  for (const move of candidates) {
+    if (isWinningMove(state, move.row, move.col, aiPiece)) wins.push(move);
+    if (isWinningMove(state, move.row, move.col, humanPiece)) blocks.push(move);
+    const attack = evaluateMove(state, move.row, move.col, aiPiece);
+    const defense = evaluateMove(state, move.row, move.col, humanPiece);
+    ranked.push({ ...move, score: attack.score * 1.08 + defense.score * 1.16 + centerPreference(move.row, move.col) });
+    yield null;
+  }
+  ranked.sort(compareMoves);
+  if (wins.length) return { ...wins.sort((a, b) => centerPreference(b.row, b.col) - centerPreference(a.row, a.col))[0], strategy: 'win' };
+  if (blocks.length) {
+    const move = ranked.find(item => blocks.some(block => block.row === item.row && block.col === item.col));
+    return { ...move, strategy: 'block' };
+  }
+  if (!ranked.length) return null;
+  if (difficulty === 'easy') {
+    const pool = ranked.filter(move => move.score >= ranked[0].score * 0.55).slice(0, 5);
+    return { ...pool[Math.min(pool.length - 1, Math.max(0, Math.floor(random() * pool.length)))], strategy: 'relaxed' };
+  }
+  if (difficulty !== 'hard') return { ...ranked[0], strategy: 'heuristic' };
+  const tested = [];
+  for (const move of ranked.slice(0, 8)) {
+    state[move.row][move.col] = aiPiece;
+    const replies = [];
+    let winningNext = 0;
+    for (const reply of collectCandidates(state)) {
+      if (isWinningMove(state, reply.row, reply.col, aiPiece)) winningNext += 1;
+      const opponentWins = isWinningMove(state, reply.row, reply.col, humanPiece);
+      const attack = evaluateMove(state, reply.row, reply.col, humanPiece);
+      const defense = evaluateMove(state, reply.row, reply.col, aiPiece);
+      replies.push({ ...reply, score: opponentWins ? WIN_SCORE : attack.score + defense.score * 0.9, opponentWins });
+      yield null;
+    }
+    replies.sort(compareMoves);
+    let worst = 0;
+    for (const reply of replies.slice(0, 6)) {
+      if (reply.opponentWins) { worst = WIN_SCORE; break; }
+      state[reply.row][reply.col] = humanPiece;
+      let followup = 0;
+      for (const next of collectCandidates(state)) {
+        followup = Math.max(followup, evaluateMove(state, next.row, next.col, aiPiece).score);
+        yield null;
+      }
+      state[reply.row][reply.col] = boardRules.EMPTY;
+      worst = Math.max(worst, reply.score - followup * 0.55);
+    }
+    state[move.row][move.col] = boardRules.EMPTY;
+    tested.push({ ...move, score: winningNext >= 2 && !replies.some(reply => reply.opponentWins) ? WIN_SCORE / 2 : move.score * 0.65 - worst, strategy: 'reply-search' });
+    tested.sort(compareMoves);
+    yield { best: tested[0] };
+  }
+  return tested[0] || { ...ranked[0], strategy: 'heuristic' };
+}
+
+function createMoveTask(board, aiPiece = boardRules.WHITE, humanPiece = getOpponent(aiPiece), options = {}) {
+  const state = board.map(row => row.slice());
+  const difficulty = ['easy', 'normal', 'hard'].includes(options.difficulty) ? options.difficulty : 'normal';
+  const generator = analyze(state, aiPiece, humanPiece, difficulty, options.random || Math.random);
+  let cancelled = false;
+  let done = isBoardFull(state);
+  let best = null;
+  let completedCandidates = 0;
+  let startedAt = null;
+  return {
+    cancel() { cancelled = true; generator.return(); },
+    step(sliceMs = 4) {
+      if (cancelled || done) return { done: true, move: cancelled ? null : best, cancelled };
+      const now = Date.now();
+      if (startedAt === null) startedAt = now;
+      let iterations = 0;
+      do {
+        const result = generator.next();
+        if (result.done) { done = true; best = result.value; break; }
+        if (result.value && result.value.best) { best = result.value.best; completedCandidates += 1; }
+        iterations += 1;
+      } while (iterations < 80 && Date.now() - now < sliceMs);
+      // Stop only after a complete candidate has been evaluated.
+      if (difficulty === 'hard' && best && completedCandidates >= 3 && Date.now() - startedAt >= 220) { done = true; generator.return(); }
+      return { done, move: done ? best : null, cancelled: false };
+    },
+  };
 }
 
 module.exports = {
@@ -196,4 +291,5 @@ module.exports = {
   isBoardFull,
   isWinningMove,
   selectMove,
+  createMoveTask,
 };
