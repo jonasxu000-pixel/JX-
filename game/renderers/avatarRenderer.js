@@ -6,13 +6,14 @@ function loadImage(wxApi, url, onReady) {
   if (!url || !wxApi || typeof wxApi.createImage !== 'function') return null;
   const cached = imageCache.get(url);
   if (cached && cached.ready) return cached.image;
-  if (cached) return null;
+  if (cached) { if (onReady) cached.callbacks.add(onReady); return null; }
 
   const image = wxApi.createImage();
-  imageCache.set(url, { image, ready: false });
+  const entry = { image, ready: false, callbacks: new Set(onReady ? [onReady] : []) };
+  imageCache.set(url, entry);
   image.onload = () => {
-    imageCache.set(url, { image, ready: true });
-    if (onReady) onReady();
+    entry.ready = true;
+    entry.callbacks.forEach(callback => callback()); entry.callbacks.clear();
   };
   image.onerror = () => imageCache.delete(url);
   image.src = url;
@@ -48,7 +49,7 @@ function drawAvatar(ctx, wxApi, player, x, y, size, onReady) {
   ctx.fillStyle = fill;
   ctx.fill();
   ctx.fillStyle = COLORS.white;
-  ctx.font = `bold ${Math.max(13, size * 0.38)}px sans-serif`;
+  ctx.font = `bold ${Math.max(13, size * 0.38)}px "PingFang SC", "Microsoft YaHei", sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText('棋', centerX, centerY);

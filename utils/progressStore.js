@@ -5,7 +5,7 @@ const THRESHOLDS = [0, 40, 100, 200, 350, 550];
 const cache = new WeakMap();
 
 function empty() {
-  return { version: 1, xp: 0, ai: {}, puzzles: {}, history: [], receipts: [], settings: { sound: true, vibration: false, difficulty: 'normal' } };
+  return { version: 1, xp: 0, ai: {}, puzzles: {}, history: [], receipts: [], settings: { sound: true, music: false, motion: true, vibration: false, difficulty: 'normal' } };
 }
 
 function count(value) {
@@ -30,6 +30,8 @@ function read(wxApi) {
   data.receipts = Array.isArray(source.receipts) ? source.receipts.filter(id => typeof id === 'string').slice(0, 40) : [];
   data.settings.sound = !(source.settings && source.settings.sound === false);
   data.settings.vibration = Boolean(source.settings && source.settings.vibration === true);
+  data.settings.music = Boolean(source.settings && source.settings.music === true);
+  data.settings.motion = !(source.settings && source.settings.motion === false);
   data.settings.difficulty = source.settings && DIFFICULTIES.includes(source.settings.difficulty) ? source.settings.difficulty : 'normal';
   return data;
 }
@@ -86,13 +88,15 @@ function goals(data) {
     { title: '渐入佳境', note: '赢下 1 局进阶难度', value: data.ai.normal.win, target: 1 },
     { title: '破局练习', note: '解开 3 道残局', value: sum.cleared, target: 3 },
     { title: '迎难而上', note: '赢下 1 局挑战难度', value: data.ai.hard.win, target: 1 },
-    { title: '残局通关', note: '解开全部 12 道残局', value: sum.cleared, target: 12 },
+    { title: '入门毕业', note: '解开 12 道入门练习', value: Object.keys(data.puzzles).filter(id => /^p\d\d$/.test(id)).length, target: 12 },
+    { title: '攻杀入门', note: '解开 4 道烧脑挑战', value: Object.keys(data.puzzles).filter(id => /^c\d\d$/.test(id)).length, target: 4 },
+    { title: '长链破局', note: '解开全部 12 道烧脑挑战', value: Object.keys(data.puzzles).filter(id => /^c\d\d$/.test(id)).length, target: 12 },
   ].map(goal => ({ ...goal, done: goal.value >= goal.target }));
 }
 
 function setSetting(wxApi, key, value) {
   const data = read(wxApi);
-  if (!['sound', 'vibration', 'difficulty'].includes(key)) return false;
+  if (!['sound', 'music', 'motion', 'vibration', 'difficulty'].includes(key)) return false;
   if (key === 'difficulty' && !DIFFICULTIES.includes(value)) return false;
   data.settings[key] = key === 'difficulty' ? value : Boolean(value);
   return write(wxApi, data);

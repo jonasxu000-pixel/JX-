@@ -3,6 +3,18 @@
   "packOptions": {
     "ignore": [
       {
+        "value": "node_modules",
+        "type": "folder"
+      },
+      {
+        "value": "package.json",
+        "type": "file"
+      },
+      {
+        "value": "package-lock.json",
+        "type": "file"
+      },
+      {
         "value": "scripts",
         "type": "folder"
       },

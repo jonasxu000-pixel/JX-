@@ -20,20 +20,14 @@ class GrowthScene {
     drawLabel(ctx, rank.title, 36, top + 113, 'left', { bold: true, size: 19, color: '#FFF9EA' });
     drawLabel(ctx, `${data.xp} 修习值${rank.next ? ` / ${rank.next}` : ' · 满级'}`, width - 36, top + 113, 'right', { size: 11, color: '#D8B56E' });
     drawProgressBar(ctx, 36, top + 131, width - 72, rank.ratio, true);
-    drawLabel(ctx, `人机 ${total.played} 局 · 获胜 ${total.wins} 局 · 残局 ${total.cleared}/12`, 36, top + 154, 'left', { size: 12, color: '#BECEBC' });
-    const gap = 8; const tabWidth = (width - 40 - 2 * gap) / 3;
-    [['goals','成长目标'],['history','最近战绩'],['settings','体验设置']].forEach(([id, title], index) => {
+    drawLabel(ctx, `人机 ${total.played} 局 · 获胜 ${total.wins} 局 · 残局 ${total.cleared}/24`, 36, top + 154, 'left', { size: 12, color: '#BECEBC' });
+    const gap = 8; const tabWidth = (width - 40 - gap) / 2;
+    [['goals','成长目标'],['history','最近战绩']].forEach(([id, title], index) => {
       drawButton(ctx, input, { x: 20 + index * (tabWidth + gap), y: top + 192, width: tabWidth, height: 40, text: title, fontSize: 12, variant: this.tab === id ? 'primary' : 'gold', onTap: () => { this.tab = id; this.page = 0; manager.render(); } });
     });
     const contentTop = top + 244;
     const pageSize = Math.max(1, Math.min(5, Math.floor((height - contentTop - 122) / 52)));
-    if (this.tab === 'settings') {
-      ['sound','vibration'].forEach((key, index) => {
-        drawButton(ctx, input, { x: 20, y: contentTop + index * 54, width: width - 40, height: 44, text: `${key === 'sound' ? '落子音效' : '轻震动'}：${data.settings[key] ? '开启' : '关闭'}`, variant: 'secondary', onTap: () => { this.saveError = !progress.setSetting(wx, key, !data.settings[key]); manager.render(); } });
-      });
-      drawLabel(ctx, '修习值来自已完成的人机对局和首次残局通关。', 20, contentTop + 129, 'left', { size: 11, color: COLORS.inkMuted, maxWidth: width - 40 });
-      drawLabel(ctx, '记录仅保存在本机，清理数据或换设备不会同步。', 20, contentTop + 150, 'left', { size: 11, color: COLORS.inkMuted, maxWidth: width - 40 });
-    } else {
+    {
       const list = this.tab === 'goals' ? progress.goals(data) : data.history;
       const pages = Math.max(1, Math.ceil(list.length / pageSize));
       this.page = Math.min(this.page, pages - 1);

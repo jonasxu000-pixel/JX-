@@ -3,6 +3,7 @@ const gomokuAi = require('../../utils/gomokuAi');
 const progressStore = require('../../utils/progressStore');
 const matchStore = require('../../utils/localMatchStore');
 const puzzles = require('../../utils/puzzles');
+const puzzleDefense = require('../../utils/puzzleDefense');
 const boardRenderer = require('../renderers/boardRenderer');
 const { drawButton } = require('../renderers/buttonRenderer');
 const { drawLabel } = require('../renderers/textRenderer');
@@ -84,7 +85,7 @@ class AiGameScene {
     const layout = this.getLayout();
     this.boardRect = boardRenderer.getBoardRect(width, layout.boardTop, layout.maxBoardSize);
     drawLabel(ctx, this.puzzle ? this.puzzle.title : '人机对战', 20, layout.safeTop + 14, 'left', { bold: true, size: 21 });
-    drawLabel(ctx, this.puzzle ? `${this.puzzle.moves} 步内执黑取胜` : '你执黑 · AI 执白', width - 20, layout.safeTop + 14, 'right', { size: 11, color: COLORS.inkMuted });
+    drawLabel(ctx, this.puzzle ? `${this.puzzle.moves} 手内执黑取胜` : '你执黑 · AI 执白', width - 20, layout.safeTop + 14, 'right', { size: 11, color: COLORS.inkMuted });
     if (this.puzzle) {
       drawCard(ctx, { x: 20, y: layout.safeTop + 36, width: width - 40, height: 44, fill: COLORS.goldSoft, shadow: false });
       drawLabel(ctx, this.puzzle.theme, 34, layout.safeTop + 57, 'left', { size: 12, bold: true, color: '#765622', maxWidth: width - 135 });
@@ -152,7 +153,9 @@ class AiGameScene {
   }
   startAiSearch() {
     if (!this.active || this.gameOver || this.currentPlayer !== board.WHITE) return;
-    this.aiTask = gomokuAi.createMoveTask(this.board, board.WHITE, board.BLACK, { difficulty: this.difficulty });
+    this.aiTask = this.puzzle && this.puzzle.challenge
+      ? puzzleDefense.createTask(this.board, this.puzzle.moves - this.moves)
+      : gomokuAi.createMoveTask(this.board, board.WHITE, board.BLACK, { difficulty: this.difficulty });
     const generation = this.searchGeneration;
     const tick = () => {
       this.aiTimer = null;
@@ -173,7 +176,8 @@ class AiGameScene {
   performAiMove(selected) {
     this.clearAiTimer();
     if (!this.active || this.gameOver || this.currentPlayer !== board.WHITE) return null;
-    const move = selected === undefined ? gomokuAi.selectMove(this.board, board.WHITE, board.BLACK, { difficulty: this.difficulty }) : selected;
+    const move = selected === undefined
+      ? (this.puzzle && this.puzzle.challenge ? puzzleDefense.selectMove(this.board, this.puzzle.moves - this.moves) : gomokuAi.selectMove(this.board, board.WHITE, board.BLACK, { difficulty: this.difficulty })) : selected;
     this.aiThinking = false;
     if (!move) { this.finishGame('和棋'); return null; }
     this.placeMove(move.row, move.col, board.WHITE);

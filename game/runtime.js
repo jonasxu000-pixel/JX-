@@ -10,6 +10,7 @@ const OnlineGameScene = require('./scenes/onlineGameScene');
 const ProfileScene = require('./scenes/profileScene');
 const PuzzleListScene = require('./scenes/puzzleListScene');
 const GrowthScene = require('./scenes/growthScene');
+const SettingsScene = require('./scenes/settingsScene');
 const { createFeedback } = require('../utils/gameFeedback');
 const { getSharedRoomId } = require('../utils/share');
 
@@ -58,6 +59,7 @@ function createRuntime(wxApi) {
   manager.register('puzzleList', PuzzleListScene);
   manager.register('puzzleGame', AiGameScene);
   manager.register('growth', GrowthScene);
+  manager.register('settings', SettingsScene);
 
   function start() {
     if (wxApi.cloud && wxApi.cloud.init) {
@@ -83,6 +85,7 @@ function createRuntime(wxApi) {
 
     if (wxApi.onShow) {
       wxApi.onShow(options => {
+        feedback.resume();
         const roomId = getSharedRoomId(options);
         if (roomId) {
           manager.wake();

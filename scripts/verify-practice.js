@@ -3,6 +3,8 @@ const { performance } = require('perf_hooks');
 const rules = require('../utils/board');
 const ai = require('../utils/gomokuAi');
 const puzzles = require('../utils/puzzles');
+const forcing = require('../utils/forcingSearch');
+const defense = require('../utils/puzzleDefense');
 const progress = require('../utils/progressStore');
 const matchStore = require('../utils/localMatchStore');
 const roomSession = require('../utils/roomSession');
@@ -24,7 +26,7 @@ function solve(task) {
 
 function verifyPuzzles() {
   const ids = new Set();
-  for (const puzzle of puzzles.PUZZLES) {
+  for (const puzzle of puzzles.TUTORIALS) {
     assert(!ids.has(puzzle.id)); ids.add(puzzle.id);
     const state = puzzles.createPosition(puzzle);
     const pieces = [...puzzle.black, ...puzzle.white].map(point => point.join(':'));
@@ -46,7 +48,45 @@ function verifyPuzzles() {
       state[r][c] = rules.EMPTY;
     }
   }
-  console.log('12 puzzle solutions verified against every legal defending reply');
+  console.log('12 tutorial solutions verified against every legal defending reply');
+  function prove(state, node, remaining, id) {
+    assert(node && remaining >= node.length, `${id}: invalid proof length`);
+    const row = Math.floor(node.move / 15), col = node.move % 15;
+    assert.equal(state[row][col], 0); state[row][col] = 1;
+    if (rules.checkWin(state, row, col, 1)) { assert.equal(node.length, 1); state[row][col] = 0; return; }
+    for (let r = 0; r < 15; r += 1) for (let c = 0; c < 15; c += 1) {
+      if (state[r][c]) continue;
+      state[r][c] = 2;
+      assert(!rules.checkWin(state, r, c, 2), `${id}: white can win during proof`);
+      if (!winningMoves(state, 1).length) {
+        assert.equal(node.reply, r * 15 + c, `${id}: an uncovered defending branch`);
+        prove(state, node.next, remaining - 1, id);
+      } else assert(remaining >= 2);
+      state[r][c] = 0;
+    }
+    state[row][col] = 0;
+  }
+  for (const puzzle of puzzles.CHALLENGES) {
+    assert(!ids.has(puzzle.id)); ids.add(puzzle.id);
+    const state = puzzles.createPosition(puzzle); const original = JSON.stringify(state);
+    const points = [...puzzle.black,...puzzle.white].map(point => point.join(':'));
+    assert.equal(new Set(points).size, points.length);
+    for (let r = 0; r < 15; r += 1) for (let c = 0; c < 15; c += 1) {
+      if (state[r][c]) { assert(!rules.checkWin(state,r,c,state[r][c])); continue; }
+      assert(!ai.isWinningMove(state,r,c,1), `${puzzle.id}: one-move shortcut`);
+      state[r][c] = 1;
+      const threats = winningMoves(state,1), counter = winningMoves(state,2);
+      assert(threats.length < 2 || counter.length, `${puzzle.id}: two-move shortcut`);
+      state[r][c] = 0;
+    }
+    const task = forcing.createTask(state,1,puzzle.moves);
+    let result; do { result = task.step(4); } while (!result.done);
+    assert(result.proof && !result.limited, `${puzzle.id}: no valid forcing plan`);
+    assert.equal(result.proof.length, puzzle.moves);
+    prove(state,result.proof,puzzle.moves,puzzle.id);
+    assert.equal(JSON.stringify(state), original, 'proof must restore the board');
+  }
+  console.log('12 challenge proofs (3-7 moves) exhaust all legal white replies; no one/two-move winning shortcut');
 }
 
 function verifyAI() {
@@ -142,21 +182,22 @@ function verifyPuzzleRuntime() {
     runtime.manager.go('puzzleGame', { puzzleId: puzzle.id });
     const scene = runtime.manager.current;
     assert.equal(scene.puzzle.id, puzzle.id);
+    let node = puzzle.challenge ? puzzle.proof : null;
     tapIntersection(scene, ...puzzle.solution);
-    if (!scene.gameOver) {
+    while (!scene.gameOver) {
       scene.clearAiTimer();
-      const result = solve(ai.createMoveTask(scene.board, 2, 1, { difficulty: 'hard' }));
-      scene.performAiMove(result.move);
-      assert(!scene.gameOver);
-      const winning = winningMoves(scene.board, 1)[0]; assert(winning);
-      tapIntersection(scene, winning.row, winning.col);
+      const result = solve(puzzle.challenge ? defense.createTask(scene.board, puzzle.moves - scene.moves) : ai.createMoveTask(scene.board, 2, 1, { difficulty: 'hard' }));
+      scene.performAiMove(result.move); assert(!scene.gameOver);
+      const winning = winningMoves(scene.board, 1)[0];
+      if (winning) tapIntersection(scene, winning.row, winning.col);
+      else { assert(node && node.next); node = node.next; tapIntersection(scene, Math.floor(node.move / 15), node.move % 15); }
     }
     assert.equal(scene.resultText, '你获胜');
     assert.equal(progress.read(wx).puzzles[puzzle.id], 3);
   }
-  assert.equal(progress.read(wx).xp, 300, 'all first puzzle clears must award exactly 300 XP');
+  assert.equal(progress.read(wx).xp, 600, '24 first puzzle clears must award exactly 600 XP');
   runtime.manager.go('home');
-  console.log('All 12 puzzles completed through the actual scene, defender and unlock flow');
+  console.log('All 24 puzzles completed through the actual scene, defender and unlock flow');
 }
 
 function verifyRecoveryAndFeedback() {
@@ -209,10 +250,10 @@ async function verifyOnlineRevision() {
 function verifyLayouts() {
   for (const [width, height] of [[320,568],[375,667],[390,844],[430,932]]) {
     const { runtime } = createTestRuntime(width, height);
-    for (const [name, params] of [['home',{}],['aiGame',{}],['localGame',{}],['puzzleList',{}],['puzzleGame',{puzzleId:'p01'}],['growth',{}]]) {
+    for (const [name, params] of [['home',{}],['aiGame',{}],['localGame',{}],['puzzleList',{}],['puzzleGame',{puzzleId:'p01'}],['growth',{}],['settings',{}]]) {
       runtime.manager.go(name, params);
       const scene = runtime.manager.current;
-      for (const tab of name === 'growth' ? ['goals','history','settings'] : [null]) {
+      for (const tab of name === 'growth' ? ['goals','history'] : [null]) {
         if (tab) scene.tab = tab;
         runtime.manager.render();
         for (const { rect } of runtime.manager.input.hitAreas) {
@@ -228,7 +269,7 @@ function verifyLayouts() {
     wx.getMenuButtonBoundingClientRect = () => ({ bottom: 96, right: width - 20 });
     runtime.manager.runtime.bottomInset = 34;
     const InputManager = require('../game/core/inputManager');
-    for (const name of ['home','aiGame','puzzleGame','puzzleList','growth','createRoom','joinRoom','waitRoom','profile','localGame','onlineGame']) {
+    for (const name of ['home','aiGame','puzzleGame','puzzleList','growth','settings','createRoom','joinRoom','waitRoom','profile','localGame','onlineGame']) {
       const Scene = runtime.manager.sceneTypes[name];
       const scene = new Scene({ ...runtime.manager.runtime, manager: { go() {}, render() {} } }, { puzzleId: 'p01', roomId: '123456', viewId: 'a'.repeat(36), role: 'host' });
       const input = new InputManager();

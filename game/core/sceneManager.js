@@ -63,6 +63,7 @@ class SceneManager {
   handleTouchStart(event) {
     const point = this.getTouchPoint(event, false);
     if (!point) return;
+    if (this.runtime.feedback && this.runtime.feedback.interact) this.runtime.feedback.interact();
 
     if (this.input.handleTouchStart(point.x, point.y)) {
       this.render();
