@@ -1,45 +1,34 @@
 const { drawCard, roundedRectPath } = require('./cardRenderer');
 const { drawIcon } = require('./iconRenderer');
 const caches = new WeakMap();
-const backdropCaches = new WeakMap();
 const ATLAS = 'assets/lobby-sprites.png';
 const BACKDROP = 'assets/lobby-garden.jpg';
 // Atlas bounds are verified by the native Canvas preview; no generated text is used.
 const REGIONS = { jade: [13,271,603,249], gold: [641,272,601,249], cream: [13,791,602,252], friends: [665,620,556,453] };
 
-function loadAtlas(wxApi, onReady) {
+function loadAsset(wxApi, source, onReady) {
   if (!wxApi || !wxApi.createImage) return null;
-  let entry = caches.get(wxApi);
+  let files = caches.get(wxApi);
+  if (!files) { files = new Map(); caches.set(wxApi, files); }
+  let entry = files.get(source);
   if (entry) {
     if (entry.ready) return entry.image;
     if (!entry.failed && onReady) entry.callbacks.add(onReady);
     return null;
   }
-  const image = wxApi.createImage();
-  entry = { image, ready: false, failed: false, callbacks: new Set(onReady ? [onReady] : []) };
-  caches.set(wxApi, entry);
-  image.onload = () => { entry.ready = true; entry.callbacks.forEach(callback => callback()); entry.callbacks.clear(); };
-  image.onerror = () => { entry.failed = true; entry.callbacks.clear(); };
-  image.src = ATLAS;
+  entry = { image: null, ready: false, failed: false, callbacks: new Set(onReady ? [onReady] : []) };
+  files.set(source, entry);
+  try {
+    const image = wxApi.createImage(); entry.image = image;
+    image.onload = () => { entry.ready = true; entry.callbacks.forEach(callback => callback()); entry.callbacks.clear(); };
+    image.onerror = () => { entry.failed = true; entry.callbacks.clear(); };
+    image.src = source;
+  } catch (_) { entry.failed = true; entry.callbacks.clear(); }
   return null;
 }
 
-function loadBackdrop(wxApi, onReady) {
-  if (!wxApi || !wxApi.createImage) return null;
-  let entry = backdropCaches.get(wxApi);
-  if (entry) {
-    if (entry.ready) return entry.image;
-    if (!entry.failed && onReady) entry.callbacks.add(onReady);
-    return null;
-  }
-  const image = wxApi.createImage();
-  entry = { image, ready: false, failed: false, callbacks: new Set(onReady ? [onReady] : []) };
-  backdropCaches.set(wxApi, entry);
-  image.onload = () => { entry.ready = true; entry.callbacks.forEach(callback => callback()); entry.callbacks.clear(); };
-  image.onerror = () => { entry.failed = true; entry.callbacks.clear(); };
-  image.src = BACKDROP;
-  return null;
-}
+function loadAtlas(wxApi, onReady) { return loadAsset(wxApi, ATLAS, onReady); }
+function loadBackdrop(wxApi, onReady) { return loadAsset(wxApi, BACKDROP, onReady); }
 
 function drawPlate(ctx, rect, kind, atlas) {
   if (!atlas) {
@@ -55,7 +44,7 @@ function drawPlate(ctx, rect, kind, atlas) {
   const dstW = [target, rect.width - 2 * target, target]; const dstH = [target, rect.height - 2 * target, target];
   for (let r = 0; r < 3; r += 1) for (let c = 0; c < 3; c += 1) ctx.drawImage(atlas, srcX[c], srcY[r], srcW[c], srcH[r], dstX[c], dstY[r], dstW[c], dstH[r]);
 }
-function drawFriends(ctx, atlas, rect) {
+function drawBoardVignette(ctx, atlas, rect) {
   if (!atlas) return;
   const [sx,sy,sw,sh] = REGIONS.friends;
   const size = Math.min(rect.width / sw, rect.height / sh);
@@ -72,4 +61,4 @@ function pressOverlay(ctx, input, rect) {
   ctx.save(); roundedRectPath(ctx, rect.x, rect.y, rect.width, rect.height, 22);
   ctx.fillStyle = 'rgba(34,52,41,.12)'; ctx.fill(); ctx.restore();
 }
-module.exports = { loadAtlas, loadBackdrop, drawPlate, drawFriends, drawIconButton, pressOverlay };
+module.exports = { loadAtlas, loadBackdrop, drawPlate, drawBoardVignette, drawIconButton, pressOverlay };

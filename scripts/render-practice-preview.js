@@ -68,7 +68,7 @@ const images = [
 ];
 await render('home-320', 'home', {}, 320, 568);
 await render('home-430', 'home', {}, 430, 932);
-await render('friend-sheet-375','home',{},375,667,scene => { scene.sheet = 'friend'; });
+await render('join-room-375','joinRoom',{},375,667);
 await render('profile-sheet-375','home',{},375,667,scene => { scene.sheet = 'player'; });
 const sheet = createCanvas(375 * 3, 667 * 2);
 const ctx = sheet.getContext('2d');

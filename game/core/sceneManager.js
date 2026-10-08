@@ -38,10 +38,11 @@ class SceneManager {
   }
 
   render() {
+    if (this.suspended) return;
     const { ctx, width, height } = this.runtime;
     this.input.beginFrame();
     ctx.clearRect(0, 0, width, height);
-    drawAppBackground(ctx, width, height);
+    if (!this.current || !this.current.drawsBackground) drawAppBackground(ctx, width, height);
 
     if (this.current && this.current.render) {
       this.current.render(ctx, this.input);

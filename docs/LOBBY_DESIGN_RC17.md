@@ -8,7 +8,7 @@
 
 ![大厅](previews/rc17/home-375.png)
 
-[设置](previews/rc17/settings-375.png) · [头像资料](previews/rc17/profile-sheet-375.png) · [好友房入口](previews/rc17/friend-sheet-375.png) · [小屏](previews/rc17/home-320.png) · [长屏](previews/rc17/home-430.png)
+[设置](previews/rc17/settings-375.png) · [头像资料](previews/rc17/profile-sheet-375.png) · [加入好友房](previews/rc17/join-room-375.png) · [小屏](previews/rc17/home-320.png) · [长屏](previews/rc17/home-430.png)
 
 ## 布局与交互
 
@@ -39,6 +39,8 @@
 - 用户提供的游戏截图是主要视觉依据。网络检索资料包括 [王者荣耀官方大厅入口优化](https://www.taptap.cn/moment/644255183525642580)、[球球大作战入坑指南](https://wiki.biligame.com/bob/%E5%85%A5%E5%9D%91%E6%8C%87%E5%8D%97)、[贪吃蛇大作战应用页](https://app.mi.com/details?id=com.wepie.snake.new.mi)。部分远程图片直链无法读取，不将其当作已完整查看的画面证据。
 
 ## 验证边界
+
+2026-10-08 已继续完成小屏安全区、字号与对比度、资源加载和大厅数据读取收尾；实际开发者工具已恢复基础库加载黑屏并走通设置、人机黑白落子与重开返回。自动门禁通过，覆盖可选资源失败、后台停止绘制、图片缓存与大厅重绘不重复读取原生存储。
 
 `node scripts/verify-release.js` 包含 24 题解法、真实场景通关、首页与独立设置绑定、音频前后台、动画收尾与取消、四尺寸触摸区、头像弹层和原有联机回归。新增烧脑搜索在桌面测试中按 4 ms 目标分片；该测量不是手机性能结果。页面截图也使用真实绘制代码，但不能代替真机音频、手势、帧率和完整使用体验。
 

@@ -116,4 +116,41 @@ function verifySearchBudgetAndCancellation() {
   console.log(`Challenge search and cancellation verified; desktop maximum slice ${maximumMs.toFixed(2)} ms; atlas ${(png.length / 1024).toFixed(0)} KiB`);
 }
 
-verifyLobbyAndSettings(); verifyAnimation(); verifySearchBudgetAndCancellation();
+function verifyOptionalAssets() {
+  const failed = createTestRuntime(); let imageAttempts = 0;
+  failed.wx.createImage = () => { imageAttempts += 1; throw new Error('image decoder unavailable'); };
+  failed.wx.createUserInfoButton = () => { throw new Error('native view unavailable'); };
+  failed.runtime.start();
+  const home = failed.runtime.manager.current;
+  assert.equal(home.constructor.name,'HomeScene');
+  assert.equal(home.userInfoButton,null);
+  failed.runtime.manager.render(); failed.runtime.manager.render();
+  assert.equal(imageAttempts,2,'failed optional artwork must not be retried on every redraw');
+  tap(failed.runtime.manager,home.getActionLayout().ai);
+  assert.equal(failed.runtime.manager.current.constructor.name,'AiGameScene','offline practice must stay available when optional assets fail');
+  failed.runtime.manager.go('settings');
+
+  const loaded = createTestRuntime(); const images = []; let paints = 0;
+  loaded.ctx.fillRect = () => { paints += 1; };
+  loaded.wx.createImage = () => { const image = {}; images.push(image); return image; };
+  loaded.runtime.manager.go('home'); assert.equal(images.length,2);
+  loaded.runtime.manager.suspend(); const before = paints;
+  images.forEach(image => image.onload()); loaded.runtime.manager.render();
+  assert.equal(paints,before,'late image loads must not repaint a backgrounded game');
+  loaded.runtime.manager.resume(); assert(paints > before);
+  loaded.runtime.manager.go('settings'); loaded.runtime.manager.go('home');
+  assert.equal(images.length,2,'ready artwork must be reused across lobby visits');
+  loaded.runtime.manager.suspend();
+  const snapshot = createTestRuntime(); let reads = 0;
+  const getStorage = snapshot.wx.getStorageSync;
+  snapshot.wx.getStorageSync = key => { reads += 1; return getStorage.call(snapshot.wx,key); };
+  snapshot.runtime.manager.go('home'); const entryReads = reads;
+  for (let i = 0; i < 20; i += 1) snapshot.runtime.manager.render();
+  assert.equal(reads,entryReads,'lobby redraws must not repeatedly query native storage');
+  snapshot.runtime.manager.suspend(); progress.setSetting(snapshot.wx,'difficulty','hard');
+  snapshot.runtime.manager.resume(); assert.equal(snapshot.runtime.manager.current.growth.settings.difficulty,'hard','foreground entry must refresh settings');
+  snapshot.runtime.manager.suspend();
+  console.log('Optional artwork/native-control failures, background repaint cancellation and asset reuse verified');
+}
+
+verifyLobbyAndSettings(); verifyAnimation(); verifySearchBudgetAndCancellation(); verifyOptionalAssets();
