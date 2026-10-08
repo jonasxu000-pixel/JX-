@@ -1,9 +1,11 @@
 const { drawCard, roundedRectPath } = require('./cardRenderer');
 const { drawIcon } = require('./iconRenderer');
 const caches = new WeakMap();
+const backdropCaches = new WeakMap();
 const ATLAS = 'assets/lobby-sprites.png';
+const BACKDROP = 'assets/lobby-garden.jpg';
 // Atlas bounds are verified by the native Canvas preview; no generated text is used.
-const REGIONS = { jade: [20,241,598,241], gold: [636,241,599,241], cream: [21,818,599,236], friends: [659,713,557,447] };
+const REGIONS = { jade: [13,271,603,249], gold: [641,272,601,249], cream: [13,791,602,252], friends: [665,620,556,453] };
 
 function loadAtlas(wxApi, onReady) {
   if (!wxApi || !wxApi.createImage) return null;
@@ -22,6 +24,23 @@ function loadAtlas(wxApi, onReady) {
   return null;
 }
 
+function loadBackdrop(wxApi, onReady) {
+  if (!wxApi || !wxApi.createImage) return null;
+  let entry = backdropCaches.get(wxApi);
+  if (entry) {
+    if (entry.ready) return entry.image;
+    if (!entry.failed && onReady) entry.callbacks.add(onReady);
+    return null;
+  }
+  const image = wxApi.createImage();
+  entry = { image, ready: false, failed: false, callbacks: new Set(onReady ? [onReady] : []) };
+  backdropCaches.set(wxApi, entry);
+  image.onload = () => { entry.ready = true; entry.callbacks.forEach(callback => callback()); entry.callbacks.clear(); };
+  image.onerror = () => { entry.failed = true; entry.callbacks.clear(); };
+  image.src = BACKDROP;
+  return null;
+}
+
 function drawPlate(ctx, rect, kind, atlas) {
   if (!atlas) {
     drawCard(ctx, { ...rect, radius: 22, fill: { jade: '#227568', gold: '#F2C46F', cream: '#F7EEDC' }[kind], stroke: '#D6BC83' });
@@ -29,7 +48,7 @@ function drawPlate(ctx, rect, kind, atlas) {
   }
   const [sx, sy, sw, sh] = REGIONS[kind];
   // Nine-slice retains the painted bevel when panels have different proportions.
-  const edge = 54; const target = Math.min(24, rect.width / 4, rect.height / 4);
+  const edge = 54; const target = Math.min(16, rect.width / 4, rect.height / 4);
   const srcX = [sx, sx + edge, sx + sw - edge]; const srcY = [sy, sy + edge, sy + sh - edge];
   const srcW = [edge, sw - 2 * edge, edge]; const srcH = [edge, sh - 2 * edge, edge];
   const dstX = [rect.x, rect.x + target, rect.x + rect.width - target]; const dstY = [rect.y, rect.y + target, rect.y + rect.height - target];
@@ -53,4 +72,4 @@ function pressOverlay(ctx, input, rect) {
   ctx.save(); roundedRectPath(ctx, rect.x, rect.y, rect.width, rect.height, 22);
   ctx.fillStyle = 'rgba(34,52,41,.12)'; ctx.fill(); ctx.restore();
 }
-module.exports = { loadAtlas, drawPlate, drawFriends, drawIconButton, pressOverlay };
+module.exports = { loadAtlas, loadBackdrop, drawPlate, drawFriends, drawIconButton, pressOverlay };

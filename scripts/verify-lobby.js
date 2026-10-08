@@ -23,10 +23,14 @@ function verifyLobbyAndSettings() {
   wx.createUserInfoButton = options => { const button = { options, onTap() {}, destroy() { this.destroyed = true; } }; native.push(button); return button; };
   manager.go('home'); let home = manager.current;
   assert.equal(native[0].options.style.width, 48, 'native login must cover only the compact avatar');
-  tap(manager, home.getActionLayout().friend);
-  assert.equal(home.sheet, 'friend'); assert(native[0].destroyed);
-  home.onHide(); home.onResume(); assert.equal(native.length, 1, 'native login must not overlay an open sheet after foregrounding');
-  home.closeSheet(); assert.equal(native.length, 2);
+  manager.runtime.cloud.createRoom = () => new Promise(() => {});
+  tap(manager, home.getActionLayout().create);
+  assert.equal(manager.current.constructor.name, 'CreateRoomScene', 'create-room action must be available directly from the lobby');
+  assert(native[0].destroyed);
+  manager.go('home'); home = manager.current;
+  tap(manager, home.getActionLayout().join);
+  assert.equal(manager.current.constructor.name, 'JoinRoomScene', 'join-room action must be available directly from the lobby');
+  manager.go('home'); home = manager.current;
   savePlayer(wx, 'local-test-only', { nickName: '棋友测试' }); manager.go('home'); home = manager.current;
   tap(manager, { x: 20, y: home.getLayout().playerY, width: 48, height: 48 });
   assert.equal(home.sheet, 'player');
@@ -62,7 +66,7 @@ function verifyLobbyAndSettings() {
   assert.equal(manager.current.mode,'ai'); assert.equal(manager.current.moves,0);
   assert.notEqual(manager.current.id, previousId, 'fresh entry must start a new match');
   manager.go('home');
-  console.log('Compact avatar, modal isolation, independent settings, real music loop and lifecycle verified');
+  console.log('Compact avatar, direct friend-room actions, independent settings, real music loop and lifecycle verified');
 }
 
 function verifyAnimation() {

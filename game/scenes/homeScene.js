@@ -14,7 +14,7 @@ const { toUserMessage } = require('../../utils/userFacingError');
 const progressStore = require('../../utils/progressStore');
 const localMatchStore = require('../../utils/localMatchStore');
 const roomSession = require('../../utils/roomSession');
-const { drawMiniBoard } = require('../renderers/practiceRenderer');
+const { drawMiniBoard, drawProgressBar } = require('../renderers/practiceRenderer');
 const { drawIcon } = require('../renderers/iconRenderer');
 const lobby = require('../renderers/lobbyRenderer');
 const puzzles = require('../../utils/puzzles');
@@ -142,33 +142,38 @@ class HomeScene {
 
   getLayout() {
     const playerY = getContentTop(this.runtime.wx) + 2;
-    const start = playerY + 68;
-    const bottom = this.runtime.height - (this.runtime.bottomInset || 18) - 26;
+    const start = playerY + 66;
+    const bottom = this.runtime.height - (this.runtime.bottomInset || 18) - 14;
     const available = bottom - start;
-    const flexible = available - 128;
-    const primaryHeight = Math.min(178, flexible * 0.4);
-    const puzzleHeight = Math.min(140, flexible * 0.32);
-    const pairHeight = Math.min(104, flexible * 0.28);
-    return { playerY, start, primaryHeight, puzzleHeight, pairHeight, compact: available < 425 };
+    const budget = Math.max(0, available - 58);
+    const clamp = (value, minimum, maximum) => Math.max(minimum, Math.min(maximum, value));
+    const primaryHeight = clamp(budget * 0.4, 148, 184);
+    const puzzleHeight = clamp(budget * 0.22, 72, 102);
+    const friendHeight = clamp(budget * 0.21, 74, 98);
+    const dockHeight = clamp(budget * 0.12, 40, 54);
+    const sectionHeight = primaryHeight + puzzleHeight + friendHeight + dockHeight + 58;
+    const gap = clamp((available - sectionHeight + 30) / 3, 10, 34);
+    return { playerY, start, primaryHeight, puzzleHeight, friendHeight, dockHeight, gap, compact: available < 425 };
   }
   getActionLayout(layout = this.getLayout()) {
     const width = this.runtime.width;
     const x = 20; const w = width - 40; const half = (w - 12) / 2;
     const ai = { x, y: layout.start, width: w, height: layout.primaryHeight };
-    const difficultyY = ai.y + ai.height + 8;
-    const puzzle = { x, y: difficultyY + 52, width: w, height: layout.puzzleHeight };
-    const pairY = puzzle.y + puzzle.height + 12;
-    const friend = { x, y: pairY, width: half, height: layout.pairHeight };
-    const sheetY = Math.max(getContentTop(this.runtime.wx), (this.runtime.height - 266) / 2);
-    const create = { x: 40, y: sheetY + 116, width: width - 80, height: 44 };
-    const join = { x: 40, y: sheetY + 176, width: width - 80, height: 44 };
-    const dockY = pairY + layout.pairHeight + 12;
-    return { ai, difficultyY, puzzle, friend, create, join,
-      local: { x: x + half + 12, y: pairY, width: half, height: layout.pairHeight },
-      growth: { x, y: dockY, width: w, height: 44 },
-      fresh: { x: width - 160, y: difficultyY, width: 140, height: 40 },
+    const difficultyY = ai.y + (layout.compact ? 52 : 70);
+    const startButton = { x: x + 12, y: ai.y + ai.height - 50, width: w - 24, height: 42 };
+    const puzzle = { x, y: ai.y + ai.height + layout.gap, width: w, height: layout.puzzleHeight };
+    const pairY = puzzle.y + puzzle.height + layout.gap;
+    const friend = { x, y: pairY, width: w, height: layout.friendHeight };
+    const quickWidth = Math.min(74, Math.max(62, (w - 164) / 2));
+    const create = { x: width - 24 - quickWidth * 2 - 8, y: friend.y + (friend.height - 42) / 2, width: quickWidth, height: 42 };
+    const join = { x: create.x + quickWidth + 8, y: create.y, width: quickWidth, height: 42 };
+    const fresh = { x: startButton.x + startButton.width - 66, y: difficultyY, width: 58, height: 40 };
+    const dockY = friend.y + friend.height + layout.gap;
+    const growth = { x: x + half + 12, y: dockY, width: half, height: layout.dockHeight };
+    return { ai: startButton, hero: ai, difficultyY, startButton, puzzle, friend, create, join, fresh,
+      local: { x, y: dockY, width: half, height: layout.dockHeight }, growth,
       settings: { x: width - 64, y: layout.playerY + 2, width: 44, height: 44 },
-      noteY: dockY + 64 };
+      noteY: growth.y + layout.dockHeight + 14 };
   }
 
   render(ctx, input) {
@@ -176,62 +181,62 @@ class HomeScene {
     const layout = this.getLayout(); const actions = this.getActionLayout(layout);
     const data = progressStore.read(wx); const resume = localMatchStore.load(wx); const room = roomSession.read(wx);
     const atlas = lobby.loadAtlas(wx, this.onImageReady);
-    ctx.fillStyle = '#EEE7D6'; ctx.fillRect(0, 0, width, height);
+    const backdrop = lobby.loadBackdrop(wx, this.onImageReady);
+    ctx.fillStyle = '#F2ECDF'; ctx.fillRect(0, 0, width, height);
+    if (backdrop) ctx.drawImage(backdrop, 0, 0, width, height);
     drawAvatar(ctx, wx, this.player, 20, layout.playerY, 48, this.onImageReady);
-    drawLabel(ctx, this.player ? '我的棋遇' : '游客 · 点此登录', 44, layout.playerY + 59, 'center', { size: 9, color: '#81755E' });
+    drawLabel(ctx, this.player ? this.player.nickname : '游客', 44, layout.playerY + 58, 'center', { size: 9, color: '#81755E', maxWidth: 62 });
     if (this.player || !this.userInfoButton) input.addHitArea({ x: 20, y: layout.playerY, width: 48, height: 48 }, () => {
       if (!this.player) { this.loginWithWeChat(); return; }
       this.sheet = 'player'; this.stopAnimation(); manager.render();
     });
-    ctx.fillStyle = '#214E42'; ctx.font = '700 32px "STKaiti", "KaiTi", serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('棋遇', width / 2, layout.playerY + 18);
-    drawLabel(ctx, '棋遇五子棋', width / 2, layout.playerY + 43, 'center', { size: 10, color: '#837456' });
+    ctx.fillStyle = '#214E42'; ctx.font = '700 25px "STKaiti", "KaiTi", serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('棋遇五子棋', width / 2, layout.playerY + 18);
+    const rank = progressStore.level(data);
+    drawLabel(ctx, `${rank.title} · ${data.xp} 修习值`, width / 2, layout.playerY + 43, 'center', { size: 9, color: '#837456' });
+    drawProgressBar(ctx, width / 2 - 42, layout.playerY + 53, 84, rank.ratio);
     lobby.drawIconButton(ctx, input, actions.settings, 'settings', () => manager.go('settings'));
 
-    lobby.drawPlate(ctx, actions.ai, 'jade', atlas);
-    const offset = this.animationStart ? Math.sin((Date.now() - this.animationStart) / 300) * 2 : 0;
-    lobby.drawFriends(ctx, atlas, { x: width - 136, y: actions.ai.y + 8 + offset, width: 112, height: actions.ai.height - 12 });
-    drawLabel(ctx, resume ? '继续棋局' : '开始对弈', 40, actions.ai.y + actions.ai.height * 0.42, 'left', { size: width < 350 ? 24 : 28, bold: true, color: '#FFF2CD' });
-    drawLabel(ctx, resume ? (resume.mode === 'puzzle' ? '继续上次的残局' : '继续上次的人机局') : '人机练棋 · 黑棋先手', 40, actions.ai.y + actions.ai.height * 0.72, 'left', { size: 11, color: '#DAE9CF', maxWidth: width - 165 });
-    input.addHitArea(actions.ai, () => resume ? manager.go(resume.mode === 'puzzle' ? 'puzzleGame' : 'aiGame', { resume, puzzleId: resume.puzzleId }) : manager.go('aiGame'));
-    lobby.pressOverlay(ctx, input, actions.ai);
-    const difficultyWidth = (width - 56) / 3;
+    lobby.drawPlate(ctx, actions.hero, 'jade', atlas);
+    const offset = this.animationStart ? Math.sin((Date.now() - this.animationStart) / 300) * 1.5 : 0;
+    const vignetteSize = layout.compact ? 60 : 92;
+    lobby.drawFriends(ctx, atlas, { x: width - vignetteSize - 32, y: actions.hero.y + 5 + offset, width: vignetteSize, height: vignetteSize * 0.81 });
+    drawLabel(ctx, resume ? '继续对弈' : '人机对弈', 38, actions.hero.y + 20, 'left', { size: 20, bold: true, color: '#FFF2CD', maxWidth: width - 170 });
+    drawLabel(ctx, resume ? (resume.mode === 'puzzle' ? '上次残局已为你保存' : '接着上次的棋局继续') : '选择难度，开始下一盘', 38, actions.hero.y + 41, 'left', { size: 10, color: '#DAE9CF', maxWidth: width - 170 });
+    const difficultyWidth = (width - 96) / 3;
     if (resume) {
-      drawLabel(ctx, resume.mode === 'puzzle' ? '还有一道残局未完成' : '上次的人机局未结束', 24, actions.difficultyY + 20, 'left', { size: 11, color: '#8B7957', maxWidth: width - 192 });
-      drawButton(ctx, input, { ...actions.fresh, text: '新开人机局', variant: 'gold', fontSize: 13, onTap: () => manager.go('aiGame') });
+      drawLabel(ctx, '继续上局', 28, actions.difficultyY + 20, 'left', { size: 12, color: '#8B7957' });
     } else [['easy','入门'],['normal','进阶'],['hard','挑战']].forEach(([id,label], index) => {
-      const rect = { x: 20 + index * (difficultyWidth + 8), y: actions.difficultyY, width: difficultyWidth, height: 40 };
-      drawCard(ctx, { ...rect, radius: 16, fill: data.settings.difficulty === id ? '#E6CB8E' : '#F5EFDF', stroke: '#D8C9A9', shadow: false });
-      drawLabel(ctx, label, rect.x + rect.width / 2, rect.y + 20, 'center', { size: 14, bold: data.settings.difficulty === id, color: '#645235' });
+      const rect = { x: 32 + index * (difficultyWidth + 8), y: actions.difficultyY, width: difficultyWidth, height: 40 };
+      drawCard(ctx, { ...rect, radius: 14, fill: data.settings.difficulty === id ? '#E4CD98' : '#F3EADC', stroke: data.settings.difficulty === id ? '#AB8B51' : '#D8C9A9', shadow: false });
+      drawLabel(ctx, label, rect.x + rect.width / 2, rect.y + 20, 'center', { size: 13, bold: data.settings.difficulty === id, color: '#645235' });
       input.addHitArea(rect, () => { progressStore.setSetting(wx, 'difficulty', id); manager.render(); });
     });
+    const startText = resume ? '继续这盘' : '开始练棋';
+    drawButton(ctx, input, { ...actions.startButton, text: startText, variant: 'primary', fill: '#174B3A', stroke: '#D2B16D', fontSize: 15, onTap: () => resume ? manager.go(resume.mode === 'puzzle' ? 'puzzleGame' : 'aiGame', { resume, puzzleId: resume.puzzleId }) : manager.go('aiGame') });
+    if (resume) drawButton(ctx, input, { ...actions.fresh, text: '新开', variant: 'gold', fontSize: 12, onTap: () => manager.go('aiGame') });
 
     lobby.drawPlate(ctx, actions.puzzle, 'gold', atlas);
-    drawLabel(ctx, '残局挑战', 40, actions.puzzle.y + actions.puzzle.height * 0.38, 'left', { size: width < 350 ? 23 : 26, bold: true, color: '#714716' });
-    drawLabel(ctx, '连续攻杀 · 3～7 手推演', 40, actions.puzzle.y + actions.puzzle.height * 0.63, 'left', { size: 11, color: '#946A31' });
-    const boardSize = Math.min(66, actions.puzzle.height - 28);
-    drawMiniBoard(ctx, width - 103, actions.puzzle.y + (actions.puzzle.height - boardSize) / 2, boardSize);
+    const puzzleBoardSize = Math.min(58, actions.puzzle.height - 16);
+    lobby.drawFriends(ctx, atlas, { x: actions.puzzle.x + 14, y: actions.puzzle.y + (actions.puzzle.height - puzzleBoardSize * 0.76) / 2, width: puzzleBoardSize, height: puzzleBoardSize * 0.76 });
+    drawLabel(ctx, '残局挑战', actions.puzzle.x + 82, actions.puzzle.y + actions.puzzle.height * 0.37, 'left', { size: width < 350 ? 18 : 20, bold: true, color: '#714716' });
+    drawLabel(ctx, '3～7 手连续攻杀', actions.puzzle.x + 82, actions.puzzle.y + actions.puzzle.height * 0.68, 'left', { size: 10, color: '#946A31', maxWidth: width - 148 });
     const cleared = puzzles.CHALLENGES.filter(puzzle => data.puzzles[puzzle.id]).length;
-    drawLabel(ctx, `${cleared}/12 已通关`, 40, actions.puzzle.y + actions.puzzle.height * 0.82, 'left', { size: 9, color: '#8A5D28' });
+    drawLabel(ctx, `${cleared}/12`, width - 48, actions.puzzle.y + actions.puzzle.height * 0.5, 'right', { size: 10, bold: true, color: '#8A5D28' });
     input.addHitArea(actions.puzzle, () => manager.go('puzzleList')); lobby.pressOverlay(ctx, input, actions.puzzle);
 
     lobby.drawPlate(ctx, actions.friend, 'cream', atlas);
-    const showPairIcons = actions.friend.height >= 70;
-    if (showPairIcons) drawIcon(ctx, 'users', actions.friend.x + actions.friend.width / 2 - 11, actions.friend.y + 8, 23, '#668367');
-    drawLabel(ctx, '好友对弈', actions.friend.x + actions.friend.width / 2, actions.friend.y + actions.friend.height * (showPairIcons ? 0.57 : 0.4), 'center', { size: width < 350 ? 16 : 18, bold: true, color: '#5C503B' });
-    drawLabel(ctx, room ? '有未结束的好友房' : '建房 / 输入房间号', actions.friend.x + actions.friend.width / 2, actions.friend.y + actions.friend.height * 0.81, 'center', { size: 9, color: '#92816B' });
-    input.addHitArea(actions.friend, () => { this.sheet = 'friend'; this.destroyWeChatLoginButton(); this.stopAnimation(); manager.render(); });
-    lobby.pressOverlay(ctx, input, actions.friend);
-    [[actions.local,'users','同屏双人','localGame']].forEach(([rect, icon, label, scene]) => {
+    drawIcon(ctx, 'users', actions.friend.x + 14, actions.friend.y + actions.friend.height / 2 - 11, 22, '#668367');
+    drawLabel(ctx, '好友对弈', actions.friend.x + 46, actions.friend.y + actions.friend.height * 0.38, 'left', { size: width < 350 ? 14 : 17, bold: true, color: '#5C503B' });
+    drawLabel(ctx, room ? '好友房已保存' : '邀请朋友来一盘', actions.friend.x + 46, actions.friend.y + actions.friend.height * 0.68, 'left', { size: 9, color: '#92816B', maxWidth: actions.create.x - actions.friend.x - 52 });
+    drawButton(ctx, input, { ...actions.create, text: room ? '继续' : '创建', variant: 'primary', fontSize: 11, onTap: () => room ? manager.go(room.waiting ? 'waitRoom' : 'onlineGame', room) : manager.go('createRoom') });
+    drawButton(ctx, input, { ...actions.join, text: '加入', variant: 'gold', fontSize: 11, onTap: () => manager.go('joinRoom') });
+    [[actions.local,'users','同屏双人','localGame'],[actions.growth,'sprout','我的成长','growth']].forEach(([rect, icon, label, scene]) => {
       lobby.drawPlate(ctx, rect, 'cream', atlas);
-      if (showPairIcons) drawIcon(ctx, icon, rect.x + rect.width / 2 - 11, rect.y + 8, 23, '#668367');
-      drawLabel(ctx, label, rect.x + rect.width / 2, rect.y + rect.height * (showPairIcons ? 0.57 : 0.4), 'center', { bold: true, size: width < 350 ? 16 : 18, color: '#65583D' });
-      drawLabel(ctx, '一台手机，两人下棋', rect.x + rect.width / 2, rect.y + rect.height * 0.81, 'center', { size: 9, color: '#92816B' });
+      drawIcon(ctx, icon, rect.x + 18, rect.y + (rect.height - 22) / 2, 22, '#668367');
+      drawLabel(ctx, label, rect.x + 49, rect.y + rect.height / 2, 'left', { bold: true, size: width < 350 ? 13 : 14, color: '#65583D' });
       input.addHitArea(rect, () => manager.go(scene)); lobby.pressOverlay(ctx, input, rect);
     });
-    drawIcon(ctx, 'sprout', width / 2 - 51, actions.growth.y + 11, 22, '#668367');
-    drawLabel(ctx, '我的成长', width / 2 - 20, actions.growth.y + 23, 'left', { size: 13, color: '#7C6A4B' });
-    input.addHitArea(actions.growth, () => manager.go('growth'));
     drawLabel(ctx, '自由五子棋 · 黑棋先行 · 无禁手', width / 2, actions.noteY, 'center', { size: 10, color: '#9A8B73' });
     if (this.sheet === 'player') this.drawPlayerSheet(ctx, input, data);
     if (this.sheet === 'friend') this.drawFriendSheet(ctx, input, room);
