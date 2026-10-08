@@ -21,8 +21,9 @@ function callRoomAction(data, fallbackMessage) {
     .catch(err => Promise.reject(new Error(toUserMessage(err, fallbackMessage))));
 }
 
-function createRoom(playerProfile) {
-  return callRoomAction({ action: 'createRoom', playerProfile }, '创建失败')
+function createRoom(playerProfile,rules) {
+  const ready=rules?callRoomAction({action:'ping'},'房间服务暂不可用').then(result=>{if(result.ruleVersion!==1)throw new Error('好友规则服务尚未更新，请稍后再试');}):Promise.resolve();
+  return ready.then(()=>callRoomAction({ action: 'createRoom', playerProfile, rules, ruleVersion:1 }, '创建失败'))
     .then(result => {
       assertViewId(result.viewId);
       return {
@@ -35,7 +36,7 @@ function createRoom(playerProfile) {
 }
 
 function joinRoom(roomId, playerProfile) {
-  return callRoomAction({ action: 'joinRoom', roomId, playerProfile }, '加入失败')
+  return callRoomAction({ action: 'joinRoom', roomId, playerProfile, ruleVersion:1 }, '加入失败')
     .then(result => {
       assertViewId(result.viewId);
       return {
@@ -97,6 +98,10 @@ function placePiece(roomId, row, col) {
 function restartRoom(roomId) {
   return callRoomAction({ action: 'restartRoom', roomId }, '再来一局失败');
 }
+function syncRoom(roomId) { return callRoomAction({action:'syncRoom',roomId},'房间同步失败'); }
+function requestUndo(roomId) { return callRoomAction({action:'requestUndo',roomId},'悔棋申请失败'); }
+function respondUndo(roomId,requestId,accept) { return callRoomAction({action:'respondUndo',roomId,requestId,accept},'悔棋确认失败'); }
+function cancelUndo(roomId,requestId) { return callRoomAction({action:'cancelUndo',roomId,requestId},'取消悔棋失败'); }
 
 function surrenderRoom(roomId) {
   return callRoomAction({ action: 'surrenderRoom', roomId }, '投降失败');
@@ -123,4 +128,5 @@ module.exports = {
   surrenderRoom,
   leaveRoom,
   getOpenId,
+  syncRoom,requestUndo,respondUndo,cancelUndo,
 };

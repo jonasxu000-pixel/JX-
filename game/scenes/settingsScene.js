@@ -18,7 +18,7 @@ class SettingsScene {
       ['vibration','vibrate','落子震动','仅自己落子时轻震一下'],
       ['motion','sparkles','大厅动效','短暂的棋子入场动作'],
     ];
-    const rowHeight = Math.min(78, (height - top - (this.runtime.bottomInset || 18) - 166) / 4);
+    const rowHeight = Math.min(68, (height - top - (this.runtime.bottomInset || 18) - 220) / 4);
     drawCard(ctx, { x: 20, y: top + 88, width: width - 40, height: rowHeight * 4, radius: 20, fill: '#FAF4E8', stroke: '#DDCFB6', shadow: false });
     rows.forEach(([key, icon, title, subtitle], index) => {
       const y = top + 88 + index * rowHeight;
@@ -38,6 +38,7 @@ class SettingsScene {
       if (index < 3) { ctx.beginPath(); ctx.moveTo(74, y + rowHeight); ctx.lineTo(width - 36, y + rowHeight); ctx.strokeStyle = '#E6DCCB'; ctx.lineWidth = 1; ctx.stroke(); }
     });
     const bottom = height - (this.runtime.bottomInset || 18);
+    drawButton(ctx,input,{x:20,y:top+100+rowHeight*4,width:width-40,height:42,text:'对局计时与悔棋规则',variant:'gold',fontSize:13,onTap:()=>manager.go('matchSetup',{mode:'settings'})});
     drawLabel(ctx, this.saveError ? '本机存储暂不可用，设置未保存' : '设置与成长记录保存在本机', width / 2, bottom - 66, 'center', { size: 11, color: this.saveError ? '#A83232' : '#97866B' });
     drawButton(ctx, input, { x: 20, y: bottom - 48, width: width - 40, height: 44, text: '返回大厅', variant: 'secondary', onTap: () => manager.go('home') });
   }

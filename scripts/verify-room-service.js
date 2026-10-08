@@ -121,6 +121,14 @@ async function main() {
   }
   assert(invalidRejected, 'six digit room ids must not be accepted as database read credentials');
 
+  const startCount=calls.length;
+  let versionError='';try{await roomService.createRoom({nickname:'规则检查'},{turnSeconds:60,allowUndo:true});}catch(error){versionError=error.message;}
+  assert(versionError.includes('好友规则服务尚未更新'),'old backend must not silently discard timed rules');
+  assert(!calls.slice(startCount).some(call=>call.options&&call.options.data.action==='createRoom'),'version mismatch must not create an orphaned room');
+  const beforeCall=wx.cloud.callFunction;
+  wx.cloud.callFunction=options=>options.data.action==='ping'?Promise.resolve({result:{success:true,ruleVersion:1}}):beforeCall(options);
+  await roomService.createRoom({nickname:'规则检查'},{turnSeconds:60,allowUndo:true});
+  assert(calls.some(call=>call.options&&call.options.data.action==='createRoom'&&call.options.data.rules&&call.options.data.rules.turnSeconds===60),'negotiated rules must be forwarded to the server');
   installDatabaseErrorMock();
   let readError = '';
   try {

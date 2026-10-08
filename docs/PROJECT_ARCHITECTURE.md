@@ -28,6 +28,7 @@ utils/
   progressStore.js              本机成长、战绩、目标、结算去重与体验设置
   localMatchStore.js            一个最近未结束练棋存档与读取校验
   roomSession.js                好友房恢复引用（实际状态仍向服务端读取）
+  matchRules.js                 对局时限、规则与每秒更新；截止时间决定超时
   gameFeedback.js               落子音效、轻震动、可开关原创背景循环，后台暂停
   onlineGameState.js            联机状态映射
   clipboard.js                  房间号复制、自动识别与 Toast 反馈
@@ -36,6 +37,8 @@ utils/
 cloudfunctions/
   login/                        获取玩家 OpenID
   roomAction/                   创建、加入、落子、重开、退出的服务端裁判
+
+RC18：`MatchSetupScene` 提供默认/开局规则，`ruleRenderer` 绘制计时和悔棋确认；`sceneBackground` 统一副页背景。人机/同屏使用绝对截止时间，好友使用服务器截止时间、事务式悔棋和时间校准。人机存档保留额度与时限；好友私有历史不进入 roomViews。具体规则及验证边界见 `MATCH_RULES_RC18.md`。
 ```
 
 数据流：

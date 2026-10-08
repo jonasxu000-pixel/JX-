@@ -34,8 +34,8 @@ class CloudClient {
     });
   }
 
-  createRoom() {
-    return roomService.createRoom(this.getPlayerProfile());
+  createRoom(rules) {
+    return roomService.createRoom(this.getPlayerProfile(),rules);
   }
 
   joinRoom(roomId) {
@@ -65,6 +65,10 @@ class CloudClient {
   leaveRoom(roomId) {
     return roomService.leaveRoom(roomId);
   }
+  syncRoom(roomId) { return roomService.syncRoom(roomId); }
+  requestUndo(roomId) { return roomService.requestUndo(roomId); }
+  respondUndo(roomId,requestId,accept) { return roomService.respondUndo(roomId,requestId,accept); }
+  cancelUndo(roomId,requestId) { return roomService.cancelUndo(roomId,requestId); }
 
   getPlayerProfile() {
     return getPublicPlayerProfile(getStoredPlayer(this.wx));

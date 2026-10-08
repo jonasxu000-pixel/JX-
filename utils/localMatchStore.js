@@ -24,6 +24,20 @@ function load(wxApi) {
       }
     }
     if (match.board.every(row => row.every(Boolean))) return null;
+    if(match.rules){
+      if(match.rules.version!==1||![0,30,60,120].includes(match.rules.turnSeconds)||typeof match.rules.allowUndo!=='boolean'||!Number.isInteger(match.undoLeft)||match.undoLeft<0||match.undoLeft>2||!Number.isSafeInteger(match.deadline)||match.deadline<0)return null;
+      if(match.currentPlayer===rules.WHITE&&match.deadline!==0)return null;
+      if(!match.rules.turnSeconds&&match.deadline!==0)return null;
+      if(match.turnStartedAt!==undefined&&(!Number.isSafeInteger(match.turnStartedAt)||match.turnStartedAt<0||match.deadline>0&&match.turnStartedAt>match.deadline))return null;
+      if(match.mode==='ai'&&match.rules.turnSeconds&&match.currentPlayer===rules.BLACK&&!match.deadline)return null;
+      if(!Array.isArray(match.undoStack)||match.undoStack.length>2)return null;
+      for(const before of match.undoStack){
+        if(before.lastMove&&(!rules.isValidPos(before.lastMove.row,before.lastMove.col)||![1,2].includes(before.lastMove.piece)||!before.board||!before.board[before.lastMove.row]||before.board[before.lastMove.row][before.lastMove.col]!==before.lastMove.piece))return null;
+        if(!before||!Number.isInteger(before.moves)||before.moves<0||before.moves>=match.moves||!Array.isArray(before.board)||before.board.length!==15||!before.board.every((row,r)=>Array.isArray(row)&&row.length===15&&row.every((piece,c)=>[0,1,2].includes(piece)&&(!piece||match.board[r][c]===piece))))return null;
+        const b=before.board.flat().filter(x=>x===1).length,w=before.board.flat().filter(x=>x===2).length;
+        if(b!==before.moves||w!==before.moves||before.remainingMs!==null&&(!Number.isFinite(before.remainingMs)||before.remainingMs<0||before.remainingMs>120000))return null;
+      }
+    }
     return JSON.parse(JSON.stringify(match));
   } catch (_) { return null; }
 }

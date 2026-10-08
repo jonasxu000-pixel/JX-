@@ -6,8 +6,9 @@ const { toUserMessage } = require('../../utils/userFacingError');
 const { getContentTop } = require('../../utils/safeArea');
 
 class CreateRoomScene {
-  constructor(runtime) {
+  constructor(runtime, params={}) {
     this.runtime = runtime;
+    this.rules = params.rules || require('../../utils/matchRules').fromSettings(require('../../utils/progressStore').read(runtime.wx).settings);
     this.loading = false;
     this.error = '';
     this.slowResponse = false;
@@ -39,7 +40,7 @@ class CreateRoomScene {
     }, 800);
     this.runtime.manager.render();
 
-    this.runtime.cloud.createRoom()
+    this.runtime.cloud.createRoom(this.rules)
       .then(room => {
         if (!this.active) {
           this.cleanupAbandonedRoom(room && room.roomId);
@@ -50,6 +51,7 @@ class CreateRoomScene {
           viewId: room.viewId,
           role: room.role || 'host',
           color: room.color || 'black',
+          rules:this.rules,
         });
       })
       .catch(err => {

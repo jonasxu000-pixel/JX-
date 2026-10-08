@@ -1,5 +1,5 @@
 const InputManager = require('./inputManager');
-const { drawAppBackground } = require('../renderers/cardRenderer');
+const { drawSceneBackground } = require('../renderers/sceneBackground');
 
 class SceneManager {
   constructor(runtime) {
@@ -10,6 +10,7 @@ class SceneManager {
     this.suspended = false;
     this.foregroundFrame = null;
     this.foregroundTimer = null;
+    this.onAssetReady = () => { if (!this.suspended) this.render(); };
   }
 
   register(name, SceneType) {
@@ -42,7 +43,7 @@ class SceneManager {
     const { ctx, width, height } = this.runtime;
     this.input.beginFrame();
     ctx.clearRect(0, 0, width, height);
-    if (!this.current || !this.current.drawsBackground) drawAppBackground(ctx, width, height);
+    if (!this.current || !this.current.drawsBackground) drawSceneBackground(ctx, width, height, this.runtime.wx, this.onAssetReady);
 
     if (this.current && this.current.render) {
       this.current.render(ctx, this.input);
@@ -62,6 +63,7 @@ class SceneManager {
   }
 
   handleTouchStart(event) {
+    if(this.suspended)return;
     const point = this.getTouchPoint(event, false);
     if (!point) return;
     if (this.runtime.feedback && this.runtime.feedback.interact) this.runtime.feedback.interact();
@@ -77,6 +79,7 @@ class SceneManager {
   }
 
   handleTouchMove(event) {
+    if(this.suspended)return;
     if (!this.input.hasActiveTouch()) return;
     const point = this.getTouchPoint(event, false);
     if (!point) return;
@@ -86,6 +89,7 @@ class SceneManager {
   }
 
   handleTouchEnd(event) {
+    if(this.suspended)return;
     if (!this.input.hasActiveTouch()) return;
     const point = this.getTouchPoint(event, true);
     if (!point) {

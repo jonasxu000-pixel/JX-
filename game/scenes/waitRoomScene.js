@@ -13,6 +13,7 @@ const ROOM_POLL_INTERVAL = 1200;
 class WaitRoomScene {
   constructor(runtime, params) {
     this.runtime = runtime;
+    this.rules=params.rules||{turnSeconds:0,allowUndo:false};
     this.roomId = params.roomId;
     this.viewId = params.viewId;
     this.role = params.role || 'host';
@@ -103,6 +104,7 @@ class WaitRoomScene {
       this.runtime.manager.render();
       return;
     }
+    this.rules=roomData.rules||{turnSeconds:0,allowUndo:false};
 
     if (roomData.status === 'playing' && !this.transitionStarted) {
       this.transitionStarted = true;
@@ -244,11 +246,11 @@ class WaitRoomScene {
 
     drawLabel(
       ctx,
-      this.role === 'host' ? '你的棋子：黑棋 · 先手' : '你的棋子：白棋 · 后手',
+      `${this.role==='host'?'你执黑 · ':'你执白 · '}${require('../../utils/matchRules').summary(this.rules)}`,
       width / 2,
       top + 254,
       'center',
-      { bold: true, size: 14 },
+      { bold: true, size: 10,maxWidth:width-60 },
     );
     if (this.error || this.copyMessage) {
       drawLabel(ctx, this.error || this.copyMessage, width / 2, top + 282, 'center', {

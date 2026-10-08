@@ -2,7 +2,7 @@ const { COLORS } = require('../design/theme');
 
 function drawTitle(ctx, text, x, y) {
   ctx.fillStyle = COLORS.ink;
-  ctx.font = '800 32px "PingFang SC", "Microsoft YaHei", sans-serif';
+  ctx.font = '700 30px "STKaiti", "KaiTi", "Microsoft YaHei", serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(text, x, y);
@@ -18,7 +18,7 @@ function drawSubtitle(ctx, text, x, y) {
 
 function drawLabel(ctx, text, x, y, align = 'left', options = {}) {
   ctx.fillStyle = options.color || COLORS.ink;
-  ctx.font = `${options.bold ? '700 ' : '400 '}${options.size || 16}px "PingFang SC", "Microsoft YaHei", sans-serif`;
+  ctx.font = `${options.bold ? '700 ' : '400 '}${options.size || 16}px ${options.family || '"PingFang SC", "Microsoft YaHei", sans-serif'}`;
   ctx.textAlign = align;
   ctx.textBaseline = 'middle';
   ctx.fillText(fitText(ctx, text, options.maxWidth), x, y);

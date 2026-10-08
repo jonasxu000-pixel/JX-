@@ -5,7 +5,7 @@ const THRESHOLDS = [0, 40, 100, 200, 350, 550];
 const cache = new WeakMap();
 
 function empty() {
-  return { version: 1, xp: 0, ai: {}, puzzles: {}, history: [], receipts: [], settings: { sound: true, music: false, motion: true, vibration: false, difficulty: 'normal' } };
+  return { version: 1, xp: 0, ai: {}, puzzles: {}, history: [], receipts: [], settings: { sound: true, music: false, motion: true, vibration: false, difficulty: 'normal', turnSeconds:60, undoEnabled:true } };
 }
 
 function count(value) {
@@ -32,6 +32,8 @@ function read(wxApi) {
   data.settings.vibration = Boolean(source.settings && source.settings.vibration === true);
   data.settings.music = Boolean(source.settings && source.settings.music === true);
   data.settings.motion = !(source.settings && source.settings.motion === false);
+  data.settings.turnSeconds = source.settings && [0,30,60,120].includes(source.settings.turnSeconds) ? source.settings.turnSeconds : 60;
+  data.settings.undoEnabled = !(source.settings && source.settings.undoEnabled === false);
   data.settings.difficulty = source.settings && DIFFICULTIES.includes(source.settings.difficulty) ? source.settings.difficulty : 'normal';
   return data;
 }
@@ -96,9 +98,10 @@ function goals(data) {
 
 function setSetting(wxApi, key, value) {
   const data = read(wxApi);
-  if (!['sound', 'music', 'motion', 'vibration', 'difficulty'].includes(key)) return false;
+  if (!['sound', 'music', 'motion', 'vibration', 'difficulty', 'turnSeconds', 'undoEnabled'].includes(key)) return false;
+  if(key==='turnSeconds' && ![0,30,60,120].includes(value))return false;
   if (key === 'difficulty' && !DIFFICULTIES.includes(value)) return false;
-  data.settings[key] = key === 'difficulty' ? value : Boolean(value);
+  data.settings[key] = ['difficulty','turnSeconds'].includes(key) ? value : Boolean(value);
   return write(wxApi, data);
 }
 

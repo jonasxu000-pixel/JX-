@@ -193,7 +193,7 @@ function createWxMock() {
         if (options.name === 'login') {
           return Promise.resolve({ result: { openid: 'test-wechat-openid' } });
         }
-        return Promise.resolve({ result: { success: true } });
+        return Promise.resolve({ result: { success: true,ruleVersion:1 } });
       },
     },
   };
@@ -674,8 +674,11 @@ function verifyRuntimeButtonGesture() {
   wx.touchEndHandler({
     changedTouches: [{ clientX: x, clientY: y }],
   });
-  assert(runtime.manager.current.constructor.name === 'LocalGameScene',
-    'releasing inside the original navigation button must change scenes');
+  assert(runtime.manager.current.constructor.name === 'MatchSetupScene',
+    'same-screen mode must expose match rules before starting');
+  const startTouch={clientX:180,clientY:667-18-84};
+  wx.touchHandler({touches:[startTouch]});wx.touchEndHandler({changedTouches:[startTouch]});
+  assert(runtime.manager.current.constructor.name==='LocalGameScene','confirmed local rules must start the match');
 }
 
 function verifyAiHomeEntry() {

@@ -595,7 +595,7 @@ async function verifyDiagnosticsDisabledByDefault(roomAction) {
 async function verifyHealthPing(roomAction) {
   delete process.env.ENABLE_ROOM_DIAGNOSTICS;
   const result = await call(roomAction, 'host-openid', { action: 'ping' });
-  assert(result.version === 'roomAction-20260921-release-8',
+  assert(result.version === 'roomAction-20261008-release-9',
     'health ping should expose deployed version');
 }
 
@@ -638,6 +638,46 @@ async function verifyFailedRoomRemoval(roomAction) {
   }
 }
 
+async function verifyTimedRules(roomAction) {
+  const realNow=Date.now;let now=realNow();Date.now=()=>now;
+  try {
+    const created=await call(roomAction,'timed-host',{action:'createRoom',ruleVersion:1,rules:{turnSeconds:30,allowUndo:true}});const roomId=created.roomId;
+    await expectFail(roomAction,'timed-guest',{action:'joinRoom',roomId},'old client must not silently join a timed room');
+    await call(roomAction,'timed-guest',{action:'joinRoom',roomId,ruleVersion:1});
+    assert(rooms.get(roomId).turnDeadline===now+30000,'server must start the first turn on join');
+    now+=5000;await call(roomAction,'timed-host',{action:'placePiece',roomId,row:7,col:7});
+    now+=1000;await call(roomAction,'timed-guest',{action:'placePiece',roomId,row:7,col:8});
+    await expectFail(roomAction,'outsider',{action:'syncRoom',roomId},'outsider must not settle/read private room');
+    now+=1000;const request=await call(roomAction,'timed-host',{action:'requestUndo',roomId});const requestId=request.roomData.pendingUndo.id;
+    await expectFail(roomAction,'timed-host',{action:'respondUndo',roomId,requestId,accept:true},'requester must not approve own undo');
+    await expectFail(roomAction,'timed-guest',{action:'placePiece',roomId,row:5,col:5},'pending undo must prevent racing moves');
+    now+=1000;currentOpenId='timed-guest';const responses=await Promise.all([roomAction.main({action:'respondUndo',roomId,requestId,accept:true}),roomAction.main({action:'respondUndo',roomId,requestId,accept:true})]);
+    assert(responses.filter(result=>result.success).length===1,'concurrent approvals must roll back exactly once');
+    const accepted=rooms.get(roomId);assert(accepted.board[7][7]===0&&accepted.board[7][8]===0&&accepted.moveHistory.length===0,'approval must remove exactly the last black/white pair');
+    assert(accepted.turnDeadline===now+23000,'undo must not refund spent thinking/approval time');
+    assert(accepted.undoRequestsUsed.host===1,'accepted request consumes quota');
+    assert(!JSON.stringify(roomViews.get(created.viewId)).includes('timed-host'),'public view must not leak identity');
+    assert(!('moveHistory' in roomViews.get(created.viewId)),'undo history stays private');
+    await call(roomAction,'timed-host',{action:'placePiece',roomId,row:6,col:6});await call(roomAction,'timed-guest',{action:'placePiece',roomId,row:6,col:7});
+    const again=await call(roomAction,'timed-host',{action:'requestUndo',roomId});await call(roomAction,'timed-guest',{action:'respondUndo',roomId,requestId:again.roomData.pendingUndo.id,accept:false});
+    await expectFail(roomAction,'timed-host',{action:'requestUndo',roomId},'rejected requests still consume quota');
+    now=rooms.get(roomId).turnDeadline;currentOpenId='timed-host';const boundary=await Promise.all([roomAction.main({action:'placePiece',roomId,row:5,col:5}),roomAction.main({action:'syncRoom',roomId})]);
+    assert(boundary.every(result=>result.success),'deadline races should converge on a successful settlement');
+    const finished=rooms.get(roomId);assert(finished.status==='finished'&&finished.finishReason==='timeout'&&finished.winner==='guest'&&finished.board[5][5]===0,'at the deadline a move must lose to timeout');
+    await expectFail(roomAction,'timed-host',{action:'requestUndo',roomId},'finished games cannot undo');
+    await call(roomAction,'timed-host',{action:'restartRoom',roomId});await call(roomAction,'timed-guest',{action:'restartRoom',roomId});
+    assert(rooms.get(roomId).turnDeadline===now+30000&&rooms.get(roomId).undoRequestsUsed.host===0,'both-ready restart must renew timer and quotas');
+    await call(roomAction,'timed-host',{action:'placePiece',roomId,row:7,col:7});await call(roomAction,'timed-guest',{action:'placePiece',roomId,row:7,col:8});
+    const pending=await call(roomAction,'timed-host',{action:'requestUndo',roomId});now+=15000;
+    const synchronized=await call(roomAction,'timed-guest',{action:'syncRoom',roomId});assert(!synchronized.roomData.pendingUndo,'unanswered request expires without resetting the turn');
+    await expectFail(roomAction,'timed-guest',{action:'respondUndo',roomId,requestId:pending.roomData.pendingUndo.id,accept:true},'late approval must fail');
+    now=rooms.get(roomId).turnDeadline;const surrendered=await call(roomAction,'timed-guest',{action:'surrenderRoom',roomId});assert(surrendered.roomData.winner==='guest'&&surrendered.roomData.finishReason==='timeout','timeout must settle before a later surrender');
+    await call(roomAction,'timed-host',{action:'leaveRoom',roomId});
+    const closed=await call(roomAction,'timed-guest',{action:'syncRoom',roomId});assert(closed.roomData===null,'closed timed room must settle as closed instead of an internal error');
+    console.log('Server timers, boundary races, undo consent/quota/expiry, privacy, restart and closure verified');
+  } finally {Date.now=realNow;}
+}
+
 async function main() {
   installMocks();
   const roomAction = loadRoomAction();
@@ -659,6 +699,7 @@ async function main() {
   await verifyConcurrentJoinIsAtomic(roomAction);
   await verifyDiagnosticsDisabledByDefault(roomAction);
   await verifyHealthPing(roomAction);
+  await verifyTimedRules(roomAction);
   process.env.ENABLE_ROOM_DIAGNOSTICS = 'true';
   await verifySelfTestMove(roomAction);
   await verifySelfTestMatch(roomAction);

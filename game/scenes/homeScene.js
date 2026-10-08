@@ -255,13 +255,13 @@ class HomeScene {
     drawIcon(ctx, 'users', actions.friend.x + 14, actions.friend.y + actions.friend.height / 2 - 11, 22, '#668367');
     drawLabel(ctx, '好友对弈', actions.friend.x + 46, actions.friend.y + actions.friend.height * 0.38, 'left', { size: width < 350 ? 14 : 17, bold: true, color: '#5C503B' });
     drawLabel(ctx, room ? '好友房已保存' : '邀请朋友来一盘', actions.friend.x + 46, actions.friend.y + actions.friend.height * 0.68, 'left', { size: 9, color: '#92816B', maxWidth: actions.create.x - actions.friend.x - 52 });
-    drawButton(ctx, input, { ...actions.create, text: room ? '继续' : '创建', variant: 'primary', fontSize: 13, onTap: () => room ? manager.go(room.waiting ? 'waitRoom' : 'onlineGame', room) : manager.go('createRoom') });
+    drawButton(ctx, input, { ...actions.create, text: room ? '继续' : '创建', variant: 'primary', fontSize: 13, onTap: () => room ? manager.go(room.waiting ? 'waitRoom' : 'onlineGame', room) : manager.go('matchSetup',{mode:'friend'}) });
     drawButton(ctx, input, { ...actions.join, text: '加入', variant: 'gold', fontSize: 13, onTap: () => manager.go('joinRoom') });
     [[actions.local,'users','同屏双人','localGame'],[actions.growth,'sprout','我的成长','growth']].forEach(([rect, icon, label, scene]) => {
       lobby.drawPlate(ctx, rect, 'cream', atlas);
       drawIcon(ctx, icon, rect.x + 18, rect.y + (rect.height - 22) / 2, 22, '#668367');
       drawLabel(ctx, label, rect.x + 49, rect.y + rect.height / 2, 'left', { bold: true, size: width < 350 ? 13 : 14, color: '#65583D' });
-      input.addHitArea(rect, () => manager.go(scene)); lobby.pressOverlay(ctx, input, rect);
+      input.addHitArea(rect, () => scene==='localGame'?manager.go('matchSetup',{mode:'local'}):manager.go(scene)); lobby.pressOverlay(ctx, input, rect);
     });
     drawCard(ctx, { x: width / 2 - 115, y: actions.noteY - 9, width: 230, height: 18, radius: 9, fill: 'rgba(250,244,231,.82)', stroke: null, shadow: false });
     drawLabel(ctx, '自由五子棋 · 黑棋先行 · 无禁手', width / 2, actions.noteY, 'center', { size: 10, color: '#76684D' });

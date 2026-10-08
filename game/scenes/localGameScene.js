@@ -3,15 +3,15 @@ const boardRenderer = require('../renderers/boardRenderer');
 const { drawButton } = require('../renderers/buttonRenderer');
 const { drawLabel } = require('../renderers/textRenderer');
 const { drawPill } = require('../renderers/cardRenderer');
-const {
-  createResultReveal,
-  drawResultOverlay,
-} = require('../renderers/resultOverlayRenderer');
+const { createResultReveal, drawResultOverlay } = require('../renderers/resultOverlayRenderer');
 const { COLORS } = require('../design/theme');
 const { getContentTop } = require('../../utils/safeArea');
+const matchRules = require('../../utils/matchRules');
+const progress = require('../../utils/progressStore');
+const { drawClock, drawUndoPrompt } = require('../renderers/ruleRenderer');
 
 class LocalGameScene {
-  constructor(runtime) {
+  constructor(runtime, params = {}) {
     this.runtime = runtime;
     this.board = board.createBoard();
     this.currentPlayer = board.BLACK;
@@ -21,9 +21,55 @@ class LocalGameScene {
     this.history = [];
     this.boardRect = null;
     this.resultReveal = createResultReveal(runtime, () => runtime.manager.render());
+    this.rules = matchRules.normalize(
+      params.rules || matchRules.fromSettings(progress.read(runtime.wx).settings),
+    );
+    this.deadline = 0;
+    this.active = false;
+    this.undoUsed = { 1: 0, 2: 0 };
+    this.pendingUndo = null;
+    this.winnerPiece = null;
+    this.clock = matchRules.createTicker(() => {
+      if (!this.active || this.gameOver) return false;
+      if (this.checkTimeout()) return false;
+      if (this.pendingUndo && Date.now() >= this.pendingUndo.expiresAt) this.pendingUndo = null;
+      runtime.manager.render();
+      return Boolean(this.deadline || this.pendingUndo);
+    });
+  }
+
+  onEnter() {
+    this.active = true;
+    this.beginTurn();
+  }
+  onHide() {
+    this.active = false;
+    this.clock.stop();
+  }
+  onResume() {
+    this.active = true;
+    if (!this.gameOver) this.beginTurn();
+  }
+  beginTurn() {
+    if (!this.deadline && this.rules.turnSeconds)
+      this.deadline = Date.now() + this.rules.turnSeconds * 1000;
+    this.clock.start();
+  }
+  checkTimeout() {
+    if (this.gameOver || !this.deadline || Date.now() < this.deadline) return false;
+    this.winnerPiece = this.currentPlayer === board.BLACK ? board.WHITE : board.BLACK;
+    this.gameOver = true;
+    this.resultText = `${board.pieceName(this.currentPlayer)}超时，${board.pieceName(this.winnerPiece)}获胜`;
+    this.pendingUndo = null;
+    this.clock.stop();
+    this.resultReveal.show();
+    this.runtime.manager.render();
+    return true;
   }
 
   onExit() {
+    this.active = false;
+    this.clock.stop();
     this.resultReveal.dispose();
   }
 
@@ -31,7 +77,11 @@ class LocalGameScene {
     const { width, manager } = this.runtime;
     const safeTop = getContentTop(this.runtime.wx);
     const boardTop = safeTop + 84;
-    this.boardRect = boardRenderer.getBoardRect(width, boardTop, this.runtime.height - boardTop - 100);
+    this.boardRect = boardRenderer.getBoardRect(
+      width,
+      boardTop,
+      this.runtime.height - boardTop - 112 - Math.max(0, (this.runtime.bottomInset || 18) - 18),
+    );
     const statusText = this.resultText || `轮到${board.pieceName(this.currentPlayer)}落子`;
 
     drawLabel(ctx, '同屏双人对战', 20, safeTop + 14, 'left', { bold: true, size: 21 });
@@ -39,37 +89,82 @@ class LocalGameScene {
       x: width - 114,
       y: safeTop,
       width: 94,
-      text: '同屏轮流',
+      text:
+        !this.history.length && !this.gameOver
+          ? `规则 · ${this.rules.turnSeconds ? this.rules.turnSeconds + '秒' : '不限时'}`
+          : '同屏轮流',
       fill: COLORS.goldSoft,
       color: '#79551D',
     });
-    drawLabel(ctx, statusText, width / 2, safeTop + 59, 'center', {
-      bold: true,
-      color: this.gameOver ? COLORS.jade : COLORS.ink,
-    });
+    if (this.gameOver)
+      drawLabel(ctx, statusText, width / 2, safeTop + 59, 'center', { bold: true, size: 15 });
+    else
+      drawClock(
+        ctx,
+        { x: 20, y: safeTop + 42, width: width - 40, height: 30 },
+        statusText,
+        this.deadline,
+      );
+    if (!this.history.length && !this.gameOver)
+      input.addHitArea({ x: width - 114, y: safeTop, width: 94, height: 38 }, () =>
+        manager.go('matchSetup', { mode: 'local', rules: this.rules }),
+      );
     boardRenderer.drawBoard(ctx, this.board, this.lastMove, this.boardRect);
-    drawLabel(ctx, '自由五子棋 · 黑棋先行 · 无禁手', width / 2, this.boardRect.y + this.boardRect.height + 12, 'center', { size: 10, color: COLORS.inkMuted });
+    drawLabel(
+      ctx,
+      '自由五子棋 · 黑棋先行 · 无禁手',
+      width / 2,
+      this.boardRect.y + this.boardRect.height + 12,
+      'center',
+      { size: 10, color: COLORS.inkMuted },
+    );
 
     if (!this.gameOver) {
       drawButton(ctx, input, {
         x: 24,
         y: this.boardRect.y + this.boardRect.height + 24,
-        width: (width - 64) / 2,
+        width: (width - 64) / 3,
         height: 46,
-        text: '重新开始',
+        text: '重开',
+        fontSize: 13,
         onTap: () => this.restart(),
       });
 
       drawButton(ctx, input, {
-        x: 40 + (width - 64) / 2,
+        x: 40 + (2 * (width - 64)) / 3,
         y: this.boardRect.y + this.boardRect.height + 24,
-        width: (width - 64) / 2,
+        width: (width - 64) / 3,
         height: 46,
-        text: '返回首页',
+        text: '返回大厅',
+        fontSize: 13,
         variant: 'secondary',
         onTap: () => manager.go('home'),
       });
+      const last = this.history[this.history.length - 1];
+      drawButton(ctx, input, {
+        x: 32 + (width - 64) / 3,
+        y: this.boardRect.y + this.boardRect.height + 24,
+        width: (width - 64) / 3,
+        height: 46,
+        text: '申请悔棋',
+        fontSize: 12,
+        variant: 'gold',
+        disabled:
+          !this.rules.allowUndo ||
+          !last ||
+          this.undoUsed[last.piece] >= 2 ||
+          Boolean(this.pendingUndo),
+        onTap: () => this.requestUndo(),
+      });
     }
+    if (this.pendingUndo && !this.gameOver)
+      drawUndoPrompt(ctx, input, this.runtime, {
+        title: `${board.pieceName(this.pendingUndo.by)}申请悔棋`,
+        note: '撤回最近一手，需要另一方同意',
+        detail: `剩余 ${Math.max(0, Math.ceil((this.pendingUndo.expiresAt - Date.now()) / 1000))} 秒 · 等待也计时，不补回用时`,
+        onAccept: () => this.respondUndo(true),
+        onReject: () => this.respondUndo(false),
+      });
 
     if (this.gameOver && this.resultReveal.isVisible()) {
       drawResultOverlay(ctx, input, {
@@ -92,32 +187,42 @@ class LocalGameScene {
   }
 
   handleTouch(x, y) {
-    if (this.gameOver || !this.boardRect) return;
+    if (this.checkTimeout()) return;
+    if (this.gameOver || this.pendingUndo || !this.boardRect) return;
     const grid = boardRenderer.hitTest(x, y, this.boardRect);
     if (!grid || this.board[grid.row][grid.col] !== board.EMPTY) return;
 
     const piece = this.currentPlayer;
     this.board[grid.row][grid.col] = piece;
     this.lastMove = { row: grid.row, col: grid.col, piece };
-    this.history.push(this.lastMove);
+    this.history.push({
+      ...this.lastMove,
+      remainingMs: this.deadline ? Math.max(0, this.deadline - Date.now()) : null,
+    });
     if (this.runtime.feedback) this.runtime.feedback.move();
 
     if (board.checkWin(this.board, grid.row, grid.col, piece)) {
       this.gameOver = true;
       this.resultText = `${board.pieceName(piece)}获胜`;
+      this.winnerPiece = piece;
     } else if (this.isFull()) {
       this.gameOver = true;
       this.resultText = '和棋';
     } else {
       this.currentPlayer = piece === board.BLACK ? board.WHITE : board.BLACK;
+      this.deadline = 0;
+      this.beginTurn();
     }
 
-    if (this.gameOver) this.resultReveal.show();
+    if (this.gameOver) {
+      this.clock.stop();
+      this.resultReveal.show();
+    }
     this.runtime.manager.render();
   }
 
   isFull() {
-    return this.board.every(row => row.every(piece => piece !== board.EMPTY));
+    return this.board.every((row) => row.every((piece) => piece !== board.EMPTY));
   }
 
   getResultPresentation() {
@@ -133,7 +238,9 @@ class LocalGameScene {
         noteColor: '#765622',
       };
     }
-    const blackWon = this.resultText === '黑棋获胜';
+    const blackWon = this.winnerPiece
+      ? this.winnerPiece === board.BLACK
+      : this.resultText === '黑棋获胜';
     return {
       badge: '胜',
       badgeFill: COLORS.jade,
@@ -173,6 +280,51 @@ class LocalGameScene {
     this.gameOver = false;
     this.resultText = '';
     this.history = [];
+    this.clock.stop();
+    this.deadline = 0;
+    this.undoUsed = { 1: 0, 2: 0 };
+    this.pendingUndo = null;
+    this.winnerPiece = null;
+    this.beginTurn();
+    this.runtime.manager.render();
+  }
+  requestUndo() {
+    const last = this.history[this.history.length - 1];
+    if (
+      this.gameOver ||
+      this.checkTimeout() ||
+      !this.rules.allowUndo ||
+      this.pendingUndo ||
+      !last ||
+      this.undoUsed[last.piece] >= 2
+    )
+      return;
+    const now = Date.now();
+    this.undoUsed[last.piece] += 1;
+    this.pendingUndo = {
+      by: last.piece,
+      requestedAt: now,
+      expiresAt: this.deadline ? Math.min(now + 15000, this.deadline) : now + 15000,
+    };
+    this.clock.start();
+    this.runtime.manager.render();
+  }
+  respondUndo(accept) {
+    if (this.gameOver || this.checkTimeout() || !this.pendingUndo) return;
+    const pending = this.pendingUndo;
+    this.pendingUndo = null;
+    if (accept && Date.now() < pending.expiresAt) {
+      const last = this.history.pop();
+      this.board[last.row][last.col] = board.EMPTY;
+      this.lastMove = this.history[this.history.length - 1] || null;
+      this.currentPlayer = pending.by;
+      const now = Date.now();
+      const remaining = this.deadline
+        ? Math.max(0, Math.min(this.deadline - now, last.remainingMs - (now - pending.requestedAt)))
+        : 0;
+      this.deadline = this.rules.turnSeconds ? now + remaining : 0;
+    }
+    if (!this.checkTimeout()) this.beginTurn();
     this.runtime.manager.render();
   }
 }

@@ -3,7 +3,7 @@ const { COLORS } = require('../design/theme');
 const { roundedRectPath } = require('./cardRenderer');
 
 function getBoardRect(width, top, maxSize = 420) {
-  const size = Math.min(width - 32, 420, Math.max(220, maxSize));
+  const size = Math.min(width - 32, 420, Math.max(180, maxSize));
   return {
     x: (width - size) / 2,
     y: top,

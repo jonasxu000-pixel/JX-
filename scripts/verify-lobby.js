@@ -25,7 +25,9 @@ function verifyLobbyAndSettings() {
   assert.equal(native[0].options.style.width, 48, 'native login must cover only the compact avatar');
   manager.runtime.cloud.createRoom = () => new Promise(() => {});
   tap(manager, home.getActionLayout().create);
-  assert.equal(manager.current.constructor.name, 'CreateRoomScene', 'create-room action must be available directly from the lobby');
+  assert.equal(manager.current.constructor.name, 'MatchSetupScene', 'room rules must be agreed before creating a friend room');
+  tap(manager,{x:20,y:667-18-106,width:335,height:44});
+  assert.equal(manager.current.constructor.name,'CreateRoomScene');
   assert(native[0].destroyed);
   manager.go('home'); home = manager.current;
   tap(manager, home.getActionLayout().join);

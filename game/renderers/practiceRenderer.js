@@ -50,8 +50,8 @@ function drawProgressBar(ctx, x, y, width, ratio, dark = false) {
 }
 
 function drawPageHeader(ctx, width, top, title, subtitle) {
-  drawLabel(ctx, '棋遇 / 练棋手记', 20, top + 8, 'left', { size: 11, color: COLORS.gold, bold: true });
-  drawLabel(ctx, title, 20, top + 39, 'left', { size: 27, bold: true, maxWidth: width - 40 });
+  drawLabel(ctx, '棋遇五子棋', 20, top + 8, 'left', { size: 11, color: COLORS.gold, bold: true });
+  drawLabel(ctx, title, 20, top + 39, 'left', { size: 27, bold: true, family:'"STKaiti", "KaiTi", "Microsoft YaHei", serif', maxWidth: width - 40 });
   drawLabel(ctx, subtitle, 20, top + 69, 'left', { size: 12, color: COLORS.inkMuted, maxWidth: width - 40 });
 }
 

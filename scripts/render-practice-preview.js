@@ -37,6 +37,11 @@ async function render(name, sceneName, params = {}, width = 375, height = 667, p
   if (name === 'profile-sheet-375') {
     require('../utils/playerSession').savePlayer(wx, 'synthetic-preview-only', { nickName: '棋友' });
   }
+  if(sceneName==='profile')require('../utils/playerSession').savePlayer(wx,'synthetic-profile',{nickName:'棋友'});
+  if(['waitRoom','onlineGame'].includes(sceneName)){
+    const fake={status:sceneName==='waitRoom'?'waiting':'playing',currentTurn:'host',host:{nickname:'棋友'},guest:sceneName==='onlineGame'?{nickname:'好友'}:null,board:board.createBoard(),rules:{version:1,turnSeconds:60,allowUndo:true},turnDeadline:sceneName==='onlineGame'?Date.now()+45000:0,moveCount:0,undoRequestsUsed:{host:0,guest:0}};
+    runtime.manager.runtime.cloud={getRoom:()=>Promise.resolve(fake),syncRoom:()=>Promise.resolve({roomData:fake,serverNow:Date.now()}),watchRoom(){return {close(){}};}};
+  }
   runtime.manager.go(sceneName, params);
   await Promise.all(pending);
   if (prepare) prepare(runtime.manager.current);
@@ -70,6 +75,14 @@ await render('home-320', 'home', {}, 320, 568);
 await render('home-430', 'home', {}, 430, 932);
 await render('join-room-375','joinRoom',{},375,667);
 await render('profile-sheet-375','home',{},375,667,scene => { scene.sheet = 'player'; });
+await render('rules-375','matchSetup',{mode:'friend'},375,667);
+await render('rules-320','matchSetup',{mode:'friend'},320,568);
+await render('local-375','localGame',{},375,667);
+await render('growth-375','growth',{},375,667);
+await render('profile-375','profile',{},375,667);
+await render('wait-room-375','waitRoom',{roomId:'123456',viewId:'a'.repeat(36),role:'host'},375,667);
+await render('online-375','onlineGame',{roomId:'123456',viewId:'a'.repeat(36),role:'host'},375,667);
+await render('undo-375','localGame',{},375,667,scene=>{scene.board[7][7]=1;scene.lastMove={row:7,col:7,piece:1};scene.history=[{...scene.lastMove,remainingMs:45000}];scene.currentPlayer=2;scene.pendingUndo={by:1,requestedAt:Date.now(),expiresAt:Date.now()+15000};});
 const sheet = createCanvas(375 * 3, 667 * 2);
 const ctx = sheet.getContext('2d');
 images.forEach((canvas, index) => { ctx.drawImage(canvas, (index % 3) * 375, Math.floor(index / 3) * 667); });

@@ -1,5 +1,6 @@
 const cloud = require('wx-server-sdk');
 const crypto = require('crypto');
+const matchRules = require('./matchRules');
 
 cloud.init({
   env: cloud.DYNAMIC_CURRENT_ENV,
@@ -19,7 +20,7 @@ const ROOM_SCHEMA_VERSION = 2;
 const WAITING_ROOM_TTL_MS = 30 * 60 * 1000;
 const ACTIVE_ROOM_TTL_MS = 6 * 60 * 60 * 1000;
 const CLEANUP_BATCH_SIZE = 20;
-const ROOM_ACTION_VERSION = 'roomAction-20260921-release-8';
+const ROOM_ACTION_VERSION = 'roomAction-20261008-release-9';
 const DIAGNOSTIC_ACTIONS = new Set([
   'selfTestMove',
   'selfTestMatch',
@@ -194,11 +195,17 @@ function toPublicRoom(room) {
     guest: toPublicPlayer(room.guest),
     currentTurn: room.currentTurn,
     board: normalizeBoard(room.board),
-    lastMove: room.lastMove || null,
+    lastMove: room.lastMove ? {row:room.lastMove.row,col:room.lastMove.col,piece:room.lastMove.piece,role:room.lastMove.role} : null,
     winner: room.winner || null,
     status: room.status,
     finishReason: room.finishReason || null,
     surrenderedBy: room.surrenderedBy || null,
+    timedOutBy:room.timedOutBy||null,
+    rules:matchRules.normalize(room.rules),
+    turnDeadline:room.turnDeadline||0,
+    moveCount:(room.moveHistory||[]).length,
+    undoRequestsUsed:room.undoRequestsUsed||{host:0,guest:0},
+    pendingUndo:room.pendingUndo||null,
     restartReady: room.restartReady || createRestartReady(),
     createdAt: room.createdAt,
     updatedAt: room.updatedAt,
@@ -277,7 +284,7 @@ async function runTransactionWithRetry(updateFunction, maxAttempts = 3) {
   throw lastError;
 }
 
-async function joinRoomForOpenId(targetRoomId, openId, playerProfile) {
+async function joinRoomForOpenId(targetRoomId, openId, playerProfile,ruleVersion) {
   if (!targetRoomId) {
     return { success: false, error: '房间号不能为空' };
   }
@@ -303,6 +310,7 @@ async function joinRoomForOpenId(targetRoomId, openId, playerProfile) {
     if (room.status !== 'waiting') {
       return { success: false, error: '房间不可加入' };
     }
+    if(matchRules.normalize(room.rules).version===1&&ruleVersion!==1)return {success:false,error:'房间使用新版计时规则，请更新小游戏后加入'};
 
     if (room.host && room.host.openId === openId) {
       return { success: false, error: '不能加入自己创建的房间' };
@@ -318,6 +326,7 @@ async function joinRoomForOpenId(targetRoomId, openId, playerProfile) {
       restartReady: createRestartReady(),
       finishReason: null,
       surrenderedBy: null,
+      turnDeadline:matchRules.deadline(room),turnStartedAt:Date.now(),pendingUndo:null,timedOutBy:null,
     });
 
     return {
@@ -341,7 +350,7 @@ async function placePieceForOpenId(targetRoomId, targetRow, targetCol, openId) {
   return runTransactionWithRetry(async transaction => {
     const roomDoc = transaction.collection('rooms').doc(targetRoomId);
     const roomRes = await roomDoc.get();
-    const room = roomRes.data;
+    let room = roomRes.data;
 
     if (!room) {
       return { success: false, error: '房间不存在' };
@@ -364,6 +373,10 @@ async function placePieceForOpenId(targetRoomId, targetRow, targetCol, openId) {
     if (!room.host || !room.guest) {
       return { success: false, error: '对手已退出，当前对局已结束' };
     }
+    const placedAt=Date.now();
+    const updates=matchRules.expiration(room,placedAt);
+    if(updates){room=await replaceRoomAndView(transaction,roomDoc,room,updates);if(room.status==='finished')return {success:true,timeout:true,roomData:toPublicRoom(room),serverNow:Date.now()};}
+    if(room.pendingUndo)return {success:false,error:'请先完成悔棋确认'};
 
     if (room.currentTurn !== role) {
       return { success: false, error: '还没有轮到你落子' };
@@ -375,6 +388,7 @@ async function placePieceForOpenId(targetRoomId, targetRow, targetCol, openId) {
     }
 
     const piece = roleToPiece(role);
+    const remainingMs=room.turnDeadline?Math.max(0,room.turnDeadline-placedAt):null;
     nextBoard[targetRow][targetCol] = piece;
 
     const hasWinner = checkWin(nextBoard, targetRow, targetCol, piece);
@@ -398,6 +412,10 @@ async function placePieceForOpenId(targetRoomId, targetRow, targetCol, openId) {
       finishReason: hasWinner ? 'five' : (hasDraw ? 'draw' : null),
       surrenderedBy: null,
       restartReady: createRestartReady(),
+      moveHistory:[...(room.moveHistory||[]),{...lastMove,remainingMs}],
+      turnDeadline:nextStatus==='playing'?matchRules.deadline(room,placedAt):0,
+      turnStartedAt:nextStatus==='playing'?placedAt:0,
+      pendingUndo:null,
     });
 
     return {
@@ -407,6 +425,7 @@ async function placePieceForOpenId(targetRoomId, targetRow, targetCol, openId) {
       currentTurn: nextTurn,
       winner,
       status: nextStatus,
+      serverNow:Date.now(),
     };
   });
 }
@@ -419,7 +438,7 @@ async function surrenderRoomForOpenId(targetRoomId, openId) {
   return runTransactionWithRetry(async transaction => {
     const roomDoc = transaction.collection('rooms').doc(targetRoomId);
     const roomRes = await roomDoc.get();
-    const room = roomRes.data;
+    let room = roomRes.data;
 
     if (!room) {
       return { success: false, error: '房间不存在' };
@@ -443,6 +462,9 @@ async function surrenderRoomForOpenId(targetRoomId, openId) {
       return { success: false, error: '对手已离开，当前对局已结束' };
     }
 
+    const elapsed=matchRules.expiration(room);
+    if(elapsed){room=await replaceRoomAndView(transaction,roomDoc,room,elapsed);if(room.status==='finished')return {success:true,timeout:true,roomData:toPublicRoom(room),serverNow:Date.now()};}
+
     const winner = nextRole(role);
     await replaceRoomAndView(transaction, roomDoc, room, {
       currentTurn: winner,
@@ -450,6 +472,7 @@ async function surrenderRoomForOpenId(targetRoomId, openId) {
       status: 'finished',
       finishReason: 'surrender',
       surrenderedBy: role,
+      pendingUndo:null,turnDeadline:0,
       restartReady: createRestartReady(),
     });
 
@@ -522,6 +545,7 @@ async function restartRoomForOpenId(targetRoomId, openId) {
       finishReason: null,
       surrenderedBy: null,
       restartReady: createRestartReady(),
+      turnDeadline:matchRules.deadline(room),turnStartedAt:Date.now(),moveHistory:[],pendingUndo:null,timedOutBy:null,undoRequestsUsed:{host:0,guest:0},
     });
 
     return {
@@ -533,6 +557,111 @@ async function restartRoomForOpenId(targetRoomId, openId) {
       restarted: true,
       restartReady: createRestartReady(),
     };
+  });
+}
+
+async function ruleAction(targetRoomId, openId, event) {
+  if (!/^\d{6}$/.test(String(targetRoomId || ''))) return { success: false, error: '房间号无效' };
+  return runTransactionWithRetry(async (transaction) => {
+    const doc = transaction.collection('rooms').doc(targetRoomId);
+    const fetched=await doc.get().catch(error=>{
+      const message=String(error&&(error.message||error.errMsg)||'');
+      if(/document.*(?:not found|not exist|does not exist)/i.test(message))return {data:null};
+      throw error;
+    });
+    let room = fetched.data;
+    if(!room)return {success:true,serverNow:Date.now(),roomData:null};
+    const role = getPlayerRole(room, openId);
+    if (!role) return { success: false, error: '你不在当前房间中' };
+    if (isRoomExpired(room)) {
+      await removeRoomAndView(transaction, doc, room);
+      return { success: false, error: '房间已过期，请重新创建' };
+    }
+    const now = Date.now();
+    const elapsed = matchRules.expiration(room, now);
+    if (elapsed) room = await replaceRoomAndView(transaction, doc, room, elapsed);
+    const reply = () => ({ success: true, serverNow: Date.now(), roomData: toPublicRoom(room) });
+    if (event.action === 'syncRoom') return reply();
+    if (room.status !== 'playing' || !room.host || !room.guest)
+      return { success: false, error: '对局结束后不能悔棋' };
+    const rules = matchRules.normalize(room.rules);
+    if (!rules.allowUndo) return { success: false, error: '本局不允许悔棋' };
+    const history = room.moveHistory || [];
+    if (event.action === 'requestUndo') {
+      if (room.pendingUndo) return { success: false, error: '已有悔棋申请等待处理' };
+      if (
+        room.currentTurn !== role ||
+        history.length < 2 ||
+        history[history.length - 2].role !== role
+      )
+        return { success: false, error: '轮到你时，才能申请退回上一轮' };
+      const used = room.undoRequestsUsed || { host: 0, guest: 0 };
+      if ((used[role] || 0) >= 2) return { success: false, error: '本局悔棋申请次数已用尽' };
+      room = await replaceRoomAndView(transaction, doc, room, {
+        undoRequestsUsed: { ...used, [role]: (used[role] || 0) + 1 },
+        pendingUndo: {
+          id: crypto.randomBytes(12).toString('hex'),
+          by: role,
+          requestedAt: now,
+          expiresAt: room.turnDeadline ? Math.min(now + 15000, room.turnDeadline) : now + 15000,
+          moveCount: history.length,
+        },
+      });
+      return reply();
+    }
+    const pending = room.pendingUndo;
+    if (!pending || pending.id !== event.requestId)
+      return { success: false, error: '悔棋申请已失效' };
+    if (event.action === 'cancelUndo') {
+      if (pending.by !== role) return { success: false, error: '只能取消自己的悔棋申请' };
+      room = await replaceRoomAndView(transaction, doc, room, { pendingUndo: null });
+      return reply();
+    }
+    if (pending.by === role || typeof event.accept !== 'boolean')
+      return { success: false, error: '请等待对手确认悔棋' };
+    if (!event.accept) {
+      room = await replaceRoomAndView(transaction, doc, room, { pendingUndo: null });
+      return reply();
+    }
+    if (history.length !== pending.moveCount || history.length < 2)
+      return { success: false, error: '棋局已变化，请重新申请' };
+    const removed = history.slice(-2);
+    const nextBoard = normalizeBoard(room.board);
+    if (
+      removed[0].role !== pending.by ||
+      removed[1].role === pending.by ||
+      removed.some(
+        (move) => !isValidPos(move.row, move.col) || nextBoard[move.row][move.col] !== move.piece,
+      )
+    )
+      return { success: false, error: '棋局记录不完整，不能悔棋' };
+    removed.forEach((move) => {
+      nextBoard[move.row][move.col] = EMPTY;
+    });
+    const nextHistory = history.slice(0, -2);
+    const remaining = room.turnDeadline
+      ? Math.max(
+          0,
+          Math.min(
+            room.turnDeadline - now,
+            Number.isFinite(removed[0].remainingMs)
+                ? removed[0].remainingMs - Math.max(0,now-(room.turnStartedAt||room.turnDeadline-rules.turnSeconds*1000))
+              : room.turnDeadline - now,
+          ),
+        )
+      : 0;
+    const restored = {
+      board: nextBoard,
+      moveHistory: nextHistory,
+      lastMove: nextHistory[nextHistory.length - 1] || null,
+      currentTurn: pending.by,
+      pendingUndo: null,
+      turnDeadline: rules.turnSeconds ? now + remaining : 0,
+      turnStartedAt:rules.turnSeconds?now:0,
+    };
+    const expired = matchRules.expiration({...room,...restored}, now);
+    room = await replaceRoomAndView(transaction, doc, room, {...restored,...expired});
+    return reply();
   });
 }
 
@@ -577,6 +706,7 @@ async function leaveRoomForOpenId(targetRoomId, openId) {
       finishReason: null,
       surrenderedBy: null,
       restartReady: createRestartReady(),
+      turnDeadline:0,pendingUndo:null,moveHistory:[],undoRequestsUsed:{host:0,guest:0},timedOutBy:null,
     });
     return { success: true, opponentLeft: true };
   });
@@ -609,6 +739,7 @@ exports.main = async (event = {}) => {
           version: ROOM_ACTION_VERSION,
           env: wxContext.ENV,
           time: Date.now(),
+          ruleVersion:1,
         };
 
       case 'createRoom': {
@@ -638,6 +769,8 @@ exports.main = async (event = {}) => {
             createdAt,
             updatedAt: createdAt,
             expiresAt: createExpiresAt('waiting', createdAt.getTime()),
+            rules:matchRules.normalize(event.ruleVersion===1?{...event.rules,version:1}:null),
+            turnDeadline:0,moveHistory:[],pendingUndo:null,undoRequestsUsed:{host:0,guest:0},timedOutBy:null,
           };
 
           try {
@@ -1036,7 +1169,13 @@ exports.main = async (event = {}) => {
       }
 
       case 'joinRoom':
-        return await joinRoomForOpenId(roomId, callerOpenId, playerProfile);
+        return await joinRoomForOpenId(roomId, callerOpenId, playerProfile,event.ruleVersion);
+
+      case 'syncRoom':
+      case 'requestUndo':
+      case 'respondUndo':
+      case 'cancelUndo':
+        return await ruleAction(roomId,callerOpenId,event);
 
       case 'placePiece':
         return await placePieceForOpenId(roomId, row, col, callerOpenId);
