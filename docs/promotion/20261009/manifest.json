@@ -1,0 +1,56 @@
+[
+  {
+    "file": "01-friends.jpg",
+    "width": 720,
+    "height": 1280,
+    "format": "JPEG",
+    "bytes": 194069,
+    "decimalKB": 194.1,
+    "jpegQuality": 75,
+    "sha256": "7b1a4cd620a2919bd015e2705773a1222a4566ed5ae823299a26a1c2b13ad647",
+    "sourceSize": [
+      941,
+      1672
+    ],
+    "sourceImage": "C:\\Users\\Xu\\.codex\\generated_images\\01a0f04a-c631-7ca2-b841-c1509c634a57\\exec-04f13c3b-2993-41a5-aae1-99e8e89c205a.png",
+    "originalCopy": "D:\\项目代码\\_codex-audits\\qiyu-promo-20261009\\masters\\01-friends.png",
+    "generationMode": "built-in image_gen",
+    "modelVersion": "not exposed by tool"
+  },
+  {
+    "file": "02-ai-practice.jpg",
+    "width": 720,
+    "height": 1280,
+    "format": "JPEG",
+    "bytes": 194679,
+    "decimalKB": 194.7,
+    "jpegQuality": 71,
+    "sha256": "fd1cc2c140239c6039f38b471edc47b7d0075d065a7cd9f878df12eb020349c5",
+    "sourceSize": [
+      941,
+      1672
+    ],
+    "sourceImage": "C:\\Users\\Xu\\.codex\\generated_images\\01a0f04a-c631-7ca2-b841-c1509c634a57\\exec-d08fe022-ec38-49ee-834d-7115889ae13e.png",
+    "originalCopy": "D:\\项目代码\\_codex-audits\\qiyu-promo-20261009\\masters\\02-ai-practice.png",
+    "generationMode": "built-in image_gen",
+    "modelVersion": "not exposed by tool"
+  },
+  {
+    "file": "03-puzzle-challenge.jpg",
+    "width": 720,
+    "height": 1280,
+    "format": "JPEG",
+    "bytes": 194527,
+    "decimalKB": 194.5,
+    "jpegQuality": 69,
+    "sha256": "79fcf93adde6400727938e82693adc13c28a39fff5040ece68e9e4b5b6e742f3",
+    "sourceSize": [
+      941,
+      1672
+    ],
+    "sourceImage": "C:\\Users\\Xu\\.codex\\generated_images\\01a0f04a-c631-7ca2-b841-c1509c634a57\\exec-bb7af9eb-cc2a-46f2-9fbc-fef1b88dba89.png",
+    "originalCopy": "D:\\项目代码\\_codex-audits\\qiyu-promo-20261009\\masters\\03-puzzle-challenge.png",
+    "generationMode": "built-in image_gen",
+    "modelVersion": "not exposed by tool"
+  }
+]
