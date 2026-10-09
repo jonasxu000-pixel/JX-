@@ -20,7 +20,8 @@ const ROOM_SCHEMA_VERSION = 2;
 const WAITING_ROOM_TTL_MS = 30 * 60 * 1000;
 const ACTIVE_ROOM_TTL_MS = 6 * 60 * 60 * 1000;
 const CLEANUP_BATCH_SIZE = 20;
-const ROOM_ACTION_VERSION = 'roomAction-20261008-release-9';
+const ROOM_ACTION_VERSION = 'roomAction-20261009-release-10';
+const gomokuRules = require('./gomokuRules');
 const DIAGNOSTIC_ACTIONS = new Set([
   'selfTestMove',
   'selfTestMatch',
@@ -135,8 +136,9 @@ function getPlayerRole(room, openId) {
   return null;
 }
 
-function roleToPiece(role) {
-  return role === 'host' ? BLACK : WHITE;
+function roleToPiece(role, room) {
+  const color = room && room[role] && room[role].color;
+  return color ? (color === 'black' ? BLACK : WHITE) : role === 'host' ? BLACK : WHITE;
 }
 
 function nextRole(role) {
@@ -195,17 +197,26 @@ function toPublicRoom(room) {
     guest: toPublicPlayer(room.guest),
     currentTurn: room.currentTurn,
     board: normalizeBoard(room.board),
-    lastMove: room.lastMove ? {row:room.lastMove.row,col:room.lastMove.col,piece:room.lastMove.piece,role:room.lastMove.role} : null,
+    lastMove: room.lastMove
+      ? {
+          row: room.lastMove.row,
+          col: room.lastMove.col,
+          piece: room.lastMove.piece,
+          role: room.lastMove.role,
+        }
+      : null,
     winner: room.winner || null,
     status: room.status,
     finishReason: room.finishReason || null,
     surrenderedBy: room.surrenderedBy || null,
-    timedOutBy:room.timedOutBy||null,
-    rules:matchRules.normalize(room.rules),
-    turnDeadline:room.turnDeadline||0,
-    moveCount:(room.moveHistory||[]).length,
-    undoRequestsUsed:room.undoRequestsUsed||{host:0,guest:0},
-    pendingUndo:room.pendingUndo||null,
+    timedOutBy: room.timedOutBy || null,
+    foulReason: room.foulReason || null,
+    roundNumber: room.roundNumber || 1,
+    rules: matchRules.normalize(room.rules),
+    turnDeadline: room.turnDeadline || 0,
+    moveCount: (room.moveHistory || []).length,
+    undoRequestsUsed: room.undoRequestsUsed || { host: 0, guest: 0 },
+    pendingUndo: room.pendingUndo || null,
     restartReady: room.restartReady || createRestartReady(),
     createdAt: room.createdAt,
     updatedAt: room.updatedAt,
@@ -284,12 +295,12 @@ async function runTransactionWithRetry(updateFunction, maxAttempts = 3) {
   throw lastError;
 }
 
-async function joinRoomForOpenId(targetRoomId, openId, playerProfile,ruleVersion) {
+async function joinRoomForOpenId(targetRoomId, openId, playerProfile, ruleVersion) {
   if (!targetRoomId) {
     return { success: false, error: '房间号不能为空' };
   }
 
-  return runTransactionWithRetry(async transaction => {
+  return runTransactionWithRetry(async (transaction) => {
     const roomDoc = transaction.collection('rooms').doc(targetRoomId);
     const roomRes = await roomDoc.get();
     const room = roomRes.data;
@@ -310,7 +321,8 @@ async function joinRoomForOpenId(targetRoomId, openId, playerProfile,ruleVersion
     if (room.status !== 'waiting') {
       return { success: false, error: '房间不可加入' };
     }
-    if(matchRules.normalize(room.rules).version===1&&ruleVersion!==1)return {success:false,error:'房间使用新版计时规则，请更新小游戏后加入'};
+    if (matchRules.normalize(room.rules).version > (ruleVersion || 0))
+      return { success: false, error: '房间使用新版计时规则，请更新小游戏后加入' };
 
     if (room.host && room.host.openId === openId) {
       return { success: false, error: '不能加入自己创建的房间' };
@@ -319,21 +331,24 @@ async function joinRoomForOpenId(targetRoomId, openId, playerProfile,ruleVersion
     await replaceRoomAndView(transaction, roomDoc, room, {
       guest: {
         openId,
-        color: 'white',
+        color: roleToPiece('host', room) === BLACK ? 'white' : 'black',
         ...sanitizePlayerProfile(playerProfile),
       },
       status: 'playing',
       restartReady: createRestartReady(),
       finishReason: null,
       surrenderedBy: null,
-      turnDeadline:matchRules.deadline(room),turnStartedAt:Date.now(),pendingUndo:null,timedOutBy:null,
+      turnDeadline: matchRules.deadline(room),
+      turnStartedAt: Date.now(),
+      pendingUndo: null,
+      timedOutBy: null,
     });
 
     return {
       success: true,
       viewId: room.viewId,
       role: 'guest',
-      color: 'white',
+      color: roleToPiece('host', room) === BLACK ? 'white' : 'black',
     };
   });
 }
@@ -347,7 +362,7 @@ async function placePieceForOpenId(targetRoomId, targetRow, targetCol, openId) {
     return { success: false, error: '落子位置无效' };
   }
 
-  return runTransactionWithRetry(async transaction => {
+  return runTransactionWithRetry(async (transaction) => {
     const roomDoc = transaction.collection('rooms').doc(targetRoomId);
     const roomRes = await roomDoc.get();
     let room = roomRes.data;
@@ -373,10 +388,19 @@ async function placePieceForOpenId(targetRoomId, targetRow, targetCol, openId) {
     if (!room.host || !room.guest) {
       return { success: false, error: '对手已退出，当前对局已结束' };
     }
-    const placedAt=Date.now();
-    const updates=matchRules.expiration(room,placedAt);
-    if(updates){room=await replaceRoomAndView(transaction,roomDoc,room,updates);if(room.status==='finished')return {success:true,timeout:true,roomData:toPublicRoom(room),serverNow:Date.now()};}
-    if(room.pendingUndo)return {success:false,error:'请先完成悔棋确认'};
+    const placedAt = Date.now();
+    const updates = matchRules.expiration(room, placedAt);
+    if (updates) {
+      room = await replaceRoomAndView(transaction, roomDoc, room, updates);
+      if (room.status === 'finished')
+        return {
+          success: true,
+          timeout: true,
+          roomData: toPublicRoom(room),
+          serverNow: Date.now(),
+        };
+    }
+    if (room.pendingUndo) return { success: false, error: '请先完成悔棋确认' };
 
     if (room.currentTurn !== role) {
       return { success: false, error: '还没有轮到你落子' };
@@ -387,14 +411,19 @@ async function placePieceForOpenId(targetRoomId, targetRow, targetCol, openId) {
       return { success: false, error: '当前位置已有棋子' };
     }
 
-    const piece = roleToPiece(role);
-    const remainingMs=room.turnDeadline?Math.max(0,room.turnDeadline-placedAt):null;
+    const piece = roleToPiece(role, room);
+    const rules = matchRules.normalize(room.rules);
+    const openingError = gomokuRules.openingError(nextBoard, targetRow, targetCol, piece, rules);
+    if (openingError) return { success: false, error: openingError };
+    const remainingMs = room.turnDeadline ? Math.max(0, room.turnDeadline - placedAt) : null;
     nextBoard[targetRow][targetCol] = piece;
 
-    const hasWinner = checkWin(nextBoard, targetRow, targetCol, piece);
-    const hasDraw = !hasWinner && isBoardFull(nextBoard);
-    const nextStatus = hasWinner || hasDraw ? 'finished' : 'playing';
-    const winner = hasWinner ? role : null;
+    const judgement = gomokuRules.adjudicate(nextBoard, targetRow, targetCol, piece, rules.ruleSet);
+    const hasWinner = judgement.win;
+    const hasFoul = Boolean(judgement.foul);
+    const hasDraw = !hasWinner && !hasFoul && isBoardFull(nextBoard);
+    const nextStatus = hasWinner || hasFoul || hasDraw ? 'finished' : 'playing';
+    const winner = hasFoul ? nextRole(role) : hasWinner ? role : null;
     const nextTurn = nextStatus === 'finished' ? role : nextRole(role);
     const lastMove = {
       row: targetRow,
@@ -409,13 +438,14 @@ async function placePieceForOpenId(targetRoomId, targetRow, targetCol, openId) {
       currentTurn: nextTurn,
       winner,
       status: nextStatus,
-      finishReason: hasWinner ? 'five' : (hasDraw ? 'draw' : null),
+      finishReason: hasFoul ? 'foul' : hasWinner ? 'five' : hasDraw ? 'draw' : null,
+      foulReason: judgement.foulText || null,
       surrenderedBy: null,
       restartReady: createRestartReady(),
-      moveHistory:[...(room.moveHistory||[]),{...lastMove,remainingMs}],
-      turnDeadline:nextStatus==='playing'?matchRules.deadline(room,placedAt):0,
-      turnStartedAt:nextStatus==='playing'?placedAt:0,
-      pendingUndo:null,
+      moveHistory: [...(room.moveHistory || []), { ...lastMove, remainingMs }],
+      turnDeadline: nextStatus === 'playing' ? matchRules.deadline(room, placedAt) : 0,
+      turnStartedAt: nextStatus === 'playing' ? placedAt : 0,
+      pendingUndo: null,
     });
 
     return {
@@ -425,7 +455,7 @@ async function placePieceForOpenId(targetRoomId, targetRow, targetCol, openId) {
       currentTurn: nextTurn,
       winner,
       status: nextStatus,
-      serverNow:Date.now(),
+      serverNow: Date.now(),
     };
   });
 }
@@ -491,7 +521,7 @@ async function restartRoomForOpenId(targetRoomId, openId) {
     return { success: false, error: '房间号不能为空' };
   }
 
-  return runTransactionWithRetry(async transaction => {
+  return runTransactionWithRetry(async (transaction) => {
     const roomDoc = transaction.collection('rooms').doc(targetRoomId);
     const roomRes = await roomDoc.get();
     const room = roomRes.data;
@@ -536,22 +566,42 @@ async function restartRoomForOpenId(targetRoomId, openId) {
     }
 
     const nextBoard = createBoard();
+    const rules = matchRules.normalize(room.rules);
+    const oldBlack = roleToPiece('host', room) === BLACK ? 'host' : 'guest';
+    const blackRole =
+      rules.version === 2
+        ? rules.rematch === 'loser' && room.winner
+          ? nextRole(room.winner)
+          : nextRole(oldBlack)
+        : 'host';
+    const colors = {
+      host: { ...room.host, color: blackRole === 'host' ? 'black' : 'white' },
+      guest: { ...room.guest, color: blackRole === 'guest' ? 'black' : 'white' },
+    };
     await replaceRoomAndView(transaction, roomDoc, room, {
+      ...colors,
+      roundNumber: (room.roundNumber || 1) + 1,
+      foulReason: null,
       board: nextBoard,
       lastMove: null,
-      currentTurn: 'host',
+      currentTurn: blackRole,
       winner: null,
       status: 'playing',
       finishReason: null,
       surrenderedBy: null,
       restartReady: createRestartReady(),
-      turnDeadline:matchRules.deadline(room),turnStartedAt:Date.now(),moveHistory:[],pendingUndo:null,timedOutBy:null,undoRequestsUsed:{host:0,guest:0},
+      turnDeadline: matchRules.deadline(room),
+      turnStartedAt: Date.now(),
+      moveHistory: [],
+      pendingUndo: null,
+      timedOutBy: null,
+      undoRequestsUsed: { host: 0, guest: 0 },
     });
 
     return {
       success: true,
       board: nextBoard,
-      currentTurn: 'host',
+      currentTurn: blackRole,
       winner: null,
       status: 'playing',
       restarted: true,
@@ -564,13 +614,13 @@ async function ruleAction(targetRoomId, openId, event) {
   if (!/^\d{6}$/.test(String(targetRoomId || ''))) return { success: false, error: '房间号无效' };
   return runTransactionWithRetry(async (transaction) => {
     const doc = transaction.collection('rooms').doc(targetRoomId);
-    const fetched=await doc.get().catch(error=>{
-      const message=String(error&&(error.message||error.errMsg)||'');
-      if(/document.*(?:not found|not exist|does not exist)/i.test(message))return {data:null};
+    const fetched = await doc.get().catch((error) => {
+      const message = String((error && (error.message || error.errMsg)) || '');
+      if (/document.*(?:not found|not exist|does not exist)/i.test(message)) return { data: null };
       throw error;
     });
     let room = fetched.data;
-    if(!room)return {success:true,serverNow:Date.now(),roomData:null};
+    if (!room) return { success: true, serverNow: Date.now(), roomData: null };
     const role = getPlayerRole(room, openId);
     if (!role) return { success: false, error: '你不在当前房间中' };
     if (isRoomExpired(room)) {
@@ -589,14 +639,20 @@ async function ruleAction(targetRoomId, openId, event) {
     const history = room.moveHistory || [];
     if (event.action === 'requestUndo') {
       if (room.pendingUndo) return { success: false, error: '已有悔棋申请等待处理' };
+      const removeCount = rules.version === 2 && rules.undoScope === 'move' ? 1 : 2;
       if (
-        room.currentTurn !== role ||
-        history.length < 2 ||
-        history[history.length - 2].role !== role
+        history.length < removeCount ||
+        history[history.length - removeCount].role !== role ||
+        (removeCount === 2 && room.currentTurn !== role)
       )
-        return { success: false, error: '轮到你时，才能申请退回上一轮' };
+        return {
+          success: false,
+          error:
+            removeCount === 1 ? '只能申请撤回自己刚落下的上一手' : '轮到你时，才能申请退回上一轮',
+        };
       const used = room.undoRequestsUsed || { host: 0, guest: 0 };
-      if ((used[role] || 0) >= 2) return { success: false, error: '本局悔棋申请次数已用尽' };
+      if ((used[role] || 0) >= rules.undoLimit)
+        return { success: false, error: '本局悔棋申请次数已用尽' };
       room = await replaceRoomAndView(transaction, doc, room, {
         undoRequestsUsed: { ...used, [role]: (used[role] || 0) + 1 },
         pendingUndo: {
@@ -605,6 +661,7 @@ async function ruleAction(targetRoomId, openId, event) {
           requestedAt: now,
           expiresAt: room.turnDeadline ? Math.min(now + 15000, room.turnDeadline) : now + 15000,
           moveCount: history.length,
+          removeCount,
         },
       });
       return reply();
@@ -623,13 +680,14 @@ async function ruleAction(targetRoomId, openId, event) {
       room = await replaceRoomAndView(transaction, doc, room, { pendingUndo: null });
       return reply();
     }
-    if (history.length !== pending.moveCount || history.length < 2)
+    const removeCount = pending.removeCount === 1 ? 1 : 2;
+    if (history.length !== pending.moveCount || history.length < removeCount)
       return { success: false, error: '棋局已变化，请重新申请' };
-    const removed = history.slice(-2);
+    const removed = history.slice(-removeCount);
     const nextBoard = normalizeBoard(room.board);
     if (
       removed[0].role !== pending.by ||
-      removed[1].role === pending.by ||
+      (removeCount === 2 && removed[1].role === pending.by) ||
       removed.some(
         (move) => !isValidPos(move.row, move.col) || nextBoard[move.row][move.col] !== move.piece,
       )
@@ -638,14 +696,21 @@ async function ruleAction(targetRoomId, openId, event) {
     removed.forEach((move) => {
       nextBoard[move.row][move.col] = EMPTY;
     });
-    const nextHistory = history.slice(0, -2);
+    const nextHistory = history.slice(0, -removeCount);
     const remaining = room.turnDeadline
       ? Math.max(
           0,
           Math.min(
             room.turnDeadline - now,
             Number.isFinite(removed[0].remainingMs)
-                ? removed[0].remainingMs - Math.max(0,now-(room.turnStartedAt||room.turnDeadline-rules.turnSeconds*1000))
+              ? removed[0].remainingMs -
+                  Math.max(
+                    0,
+                    now -
+                      (removeCount === 1
+                        ? pending.requestedAt
+                        : room.turnStartedAt || room.turnDeadline - rules.turnSeconds * 1000),
+                  )
               : room.turnDeadline - now,
           ),
         )
@@ -657,10 +722,10 @@ async function ruleAction(targetRoomId, openId, event) {
       currentTurn: pending.by,
       pendingUndo: null,
       turnDeadline: rules.turnSeconds ? now + remaining : 0,
-      turnStartedAt:rules.turnSeconds?now:0,
+      turnStartedAt: rules.turnSeconds ? now : 0,
     };
-    const expired = matchRules.expiration({...room,...restored}, now);
-    room = await replaceRoomAndView(transaction, doc, room, {...restored,...expired});
+    const expired = matchRules.expiration({ ...room, ...restored }, now);
+    room = await replaceRoomAndView(transaction, doc, room, { ...restored, ...expired });
     return reply();
   });
 }
@@ -740,6 +805,7 @@ exports.main = async (event = {}) => {
           env: wxContext.ENV,
           time: Date.now(),
           ruleVersion:1,
+          advancedRuleVersion:2,
         };
 
       case 'createRoom': {
@@ -748,17 +814,19 @@ exports.main = async (event = {}) => {
           const newRoomId = createUniqueRoomId();
           const viewId = createViewId();
           const createdAt = new Date();
+          const rules = matchRules.normalize([1,2].includes(event.ruleVersion)?{...event.rules,version:event.ruleVersion}:null);
+          const hostBlack = rules.version !== 2 || crypto.randomBytes(1)[0] < 128;
           const roomData = {
             _id: newRoomId,
             schemaVersion: ROOM_SCHEMA_VERSION,
             viewId,
             host: {
               openId: callerOpenId,
-              color: 'black',
+              color: hostBlack ? 'black' : 'white',
               ...sanitizePlayerProfile(playerProfile),
             },
             guest: null,
-            currentTurn: 'host',
+            currentTurn: hostBlack ? 'host' : 'guest',
             board: createBoard(),
             lastMove: null,
             winner: null,
@@ -769,7 +837,7 @@ exports.main = async (event = {}) => {
             createdAt,
             updatedAt: createdAt,
             expiresAt: createExpiresAt('waiting', createdAt.getTime()),
-            rules:matchRules.normalize(event.ruleVersion===1?{...event.rules,version:1}:null),
+            rules, roundNumber:1, foulReason:null,
             turnDeadline:0,moveHistory:[],pendingUndo:null,undoRequestsUsed:{host:0,guest:0},timedOutBy:null,
           };
 
@@ -792,7 +860,7 @@ exports.main = async (event = {}) => {
               roomId: newRoomId,
               viewId,
               role: 'host',
-              color: 'black',
+              color: hostBlack ? 'black' : 'white',
             };
           } catch (err) {
             if (attempt === 4) throw err;

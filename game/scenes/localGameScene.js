@@ -1,4 +1,5 @@
 const board = require('../../utils/board');
+const gomokuRules = require('../../utils/gomokuRules');
 const boardRenderer = require('../renderers/boardRenderer');
 const { drawButton } = require('../renderers/buttonRenderer');
 const { drawLabel } = require('../renderers/textRenderer');
@@ -112,7 +113,7 @@ class LocalGameScene {
     boardRenderer.drawBoard(ctx, this.board, this.lastMove, this.boardRect);
     drawLabel(
       ctx,
-      '自由五子棋 · 黑棋先行 · 无禁手',
+      `${matchRules.RULE_NAMES[this.rules.ruleSet]} · 黑棋先行${this.rules.openingCenter ? ' · 首手天元' : ''}`,
       width / 2,
       this.boardRect.y + this.boardRect.height + 12,
       'center',
@@ -140,19 +141,23 @@ class LocalGameScene {
         variant: 'secondary',
         onTap: () => manager.go('home'),
       });
-      const last = this.history[this.history.length - 1];
+      const count = this.rules.undoScope === 'round' ? 2 : 1;
+      const last = this.history[this.history.length - count];
       drawButton(ctx, input, {
         x: 32 + (width - 64) / 3,
         y: this.boardRect.y + this.boardRect.height + 24,
         width: (width - 64) / 3,
         height: 46,
-        text: '申请悔棋',
+        text:
+          last && this.rules.allowUndo
+            ? `悔棋 ${Math.max(0, this.rules.undoLimit - this.undoUsed[last.piece])}`
+            : '不可悔棋',
         fontSize: 12,
         variant: 'gold',
         disabled:
           !this.rules.allowUndo ||
           !last ||
-          this.undoUsed[last.piece] >= 2 ||
+          this.undoUsed[last.piece] >= this.rules.undoLimit ||
           Boolean(this.pendingUndo),
         onTap: () => this.requestUndo(),
       });
@@ -160,7 +165,10 @@ class LocalGameScene {
     if (this.pendingUndo && !this.gameOver)
       drawUndoPrompt(ctx, input, this.runtime, {
         title: `${board.pieceName(this.pendingUndo.by)}申请悔棋`,
-        note: '撤回最近一手，需要另一方同意',
+        note:
+          this.pendingUndo.removeCount === 2
+            ? '撤回最近一轮两手，需要另一方同意'
+            : '撤回最近一手，需要另一方同意',
         detail: `剩余 ${Math.max(0, Math.ceil((this.pendingUndo.expiresAt - Date.now()) / 1000))} 秒 · 等待也计时，不补回用时`,
         onAccept: () => this.respondUndo(true),
         onReject: () => this.respondUndo(false),
@@ -193,15 +201,39 @@ class LocalGameScene {
     if (!grid || this.board[grid.row][grid.col] !== board.EMPTY) return;
 
     const piece = this.currentPlayer;
+    const openingError = gomokuRules.openingError(
+      this.board,
+      grid.row,
+      grid.col,
+      piece,
+      this.rules,
+    );
+    if (openingError) {
+      if (this.runtime.wx.showToast)
+        this.runtime.wx.showToast({ title: openingError, icon: 'none' });
+      return;
+    }
     this.board[grid.row][grid.col] = piece;
     this.lastMove = { row: grid.row, col: grid.col, piece };
     this.history.push({
       ...this.lastMove,
+      at: Date.now(),
       remainingMs: this.deadline ? Math.max(0, this.deadline - Date.now()) : null,
     });
     if (this.runtime.feedback) this.runtime.feedback.move();
 
-    if (board.checkWin(this.board, grid.row, grid.col, piece)) {
+    const judgement = gomokuRules.adjudicate(
+      this.board,
+      grid.row,
+      grid.col,
+      piece,
+      this.rules.ruleSet,
+    );
+    if (judgement.foul) {
+      this.gameOver = true;
+      this.winnerPiece = board.WHITE;
+      this.resultText = `${judgement.foulText}，白棋获胜`;
+    } else if (judgement.win) {
       this.gameOver = true;
       this.resultText = `${board.pieceName(piece)}获胜`;
       this.winnerPiece = piece;
@@ -289,20 +321,23 @@ class LocalGameScene {
     this.runtime.manager.render();
   }
   requestUndo() {
-    const last = this.history[this.history.length - 1];
+    const count = this.rules.undoScope === 'round' ? 2 : 1;
+    const last = this.history[this.history.length - count];
     if (
       this.gameOver ||
       this.checkTimeout() ||
       !this.rules.allowUndo ||
       this.pendingUndo ||
       !last ||
-      this.undoUsed[last.piece] >= 2
+      this.undoUsed[last.piece] >= this.rules.undoLimit
     )
       return;
     const now = Date.now();
     this.undoUsed[last.piece] += 1;
     this.pendingUndo = {
       by: last.piece,
+      removeCount: count,
+      elapsedStart: count === 2 ? this.history[this.history.length - 1].at || now : now,
       requestedAt: now,
       expiresAt: this.deadline ? Math.min(now + 15000, this.deadline) : now + 15000,
     };
@@ -314,13 +349,19 @@ class LocalGameScene {
     const pending = this.pendingUndo;
     this.pendingUndo = null;
     if (accept && Date.now() < pending.expiresAt) {
-      const last = this.history.pop();
-      this.board[last.row][last.col] = board.EMPTY;
+      const removed = this.history.splice(-pending.removeCount);
+      const last = removed[0];
+      removed.forEach((move) => {
+        this.board[move.row][move.col] = board.EMPTY;
+      });
       this.lastMove = this.history[this.history.length - 1] || null;
       this.currentPlayer = pending.by;
       const now = Date.now();
       const remaining = this.deadline
-        ? Math.max(0, Math.min(this.deadline - now, last.remainingMs - (now - pending.requestedAt)))
+        ? Math.max(
+            0,
+            Math.min(this.deadline - now, last.remainingMs - (now - pending.elapsedStart)),
+          )
         : 0;
       this.deadline = this.rules.turnSeconds ? now + remaining : 0;
     }

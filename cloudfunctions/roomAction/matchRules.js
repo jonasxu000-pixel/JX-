@@ -1,5 +1,21 @@
 const EMPTY_RULES = { version: 0, turnSeconds: 0, allowUndo: false, undoLimit: 0 };
 function normalize(value) {
+  if (value && value.version === 2) {
+    const undoLimit =
+      value.allowUndo === false ? 0 : [0, 1, 2, 3].includes(value.undoLimit) ? value.undoLimit : 1;
+    return {
+      version: 2,
+      turnSeconds: [0, 30, 60, 120].includes(value.turnSeconds) ? value.turnSeconds : 30,
+      allowUndo: undoLimit > 0,
+      undoLimit,
+      undoScope: value.undoScope === 'round' ? 'round' : 'move',
+      ruleSet: ['freestyle', 'exact', 'renju'].includes(value.ruleSet)
+        ? value.ruleSet
+        : 'freestyle',
+      openingCenter: value.openingCenter === true,
+      rematch: value.rematch === 'alternate' ? 'alternate' : 'loser',
+    };
+  }
   return value && value.version === 1
     ? {
         version: 1,

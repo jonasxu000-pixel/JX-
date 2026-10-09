@@ -7,6 +7,7 @@ const checks = [
   'scripts/verify-practice.js',
   'scripts/verify-lobby.js',
   'scripts/verify-match-rules.js',
+  'scripts/verify-advanced-rules.js',
   'scripts/verify-room-action.js',
   'scripts/verify-room-service.js',
   'scripts/verify-online-game-state.js',

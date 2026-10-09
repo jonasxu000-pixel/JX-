@@ -595,7 +595,7 @@ async function verifyDiagnosticsDisabledByDefault(roomAction) {
 async function verifyHealthPing(roomAction) {
   delete process.env.ENABLE_ROOM_DIAGNOSTICS;
   const result = await call(roomAction, 'host-openid', { action: 'ping' });
-  assert(result.version === 'roomAction-20261008-release-9',
+  assert(result.version === 'roomAction-20261009-release-10',
     'health ping should expose deployed version');
 }
 
@@ -678,6 +678,71 @@ async function verifyTimedRules(roomAction) {
   } finally {Date.now=realNow;}
 }
 
+async function verifyAdvancedRules(roomAction) {
+  const crypto = require('crypto'), randomBytes = crypto.randomBytes;
+  crypto.randomBytes = size => size === 1 ? Buffer.from([255]) : randomBytes(size);
+  try {
+    const created=await call(roomAction,'v2-host',{action:'createRoom',ruleVersion:2});
+    const roomId=created.roomId;
+    assert(created.color==='white','first round must permit a white host');
+    const initial=rooms.get(roomId);
+    assert(initial.rules.turnSeconds===30&&initial.rules.undoLimit===1&&initial.rules.ruleSet==='freestyle','new default must be 30/once/no foul');
+    await expectFail(roomAction,'v2-guest',{action:'joinRoom',roomId,ruleVersion:1},'legacy client cannot join advanced room');
+    const joined=await call(roomAction,'v2-guest',{action:'joinRoom',roomId,ruleVersion:2});
+    assert(joined.color==='black'&&rooms.get(roomId).currentTurn==='guest','guest black must start');
+    await expectFail(roomAction,'v2-host',{action:'placePiece',roomId,row:7,col:7},'white owner cannot start');
+    await call(roomAction,'v2-guest',{action:'placePiece',roomId,row:7,col:7});
+    assert(rooms.get(roomId).board[7][7]===1,'guest must place a black stone');
+    const request=await call(roomAction,'v2-guest',{action:'requestUndo',roomId});
+    assert(request.roomData.pendingUndo.removeCount===1,'default undo retracts only own last stone');
+    await call(roomAction,'v2-host',{action:'respondUndo',roomId,requestId:request.roomData.pendingUndo.id,accept:true});
+    assert(rooms.get(roomId).currentTurn==='guest'&&rooms.get(roomId).moveHistory.length===0,'single undo restores black guest turn');
+    await call(roomAction,'v2-guest',{action:'placePiece',roomId,row:7,col:7});
+    await expectFail(roomAction,'v2-guest',{action:'requestUndo',roomId},'default single quota cannot be bypassed');
+    await call(roomAction,'v2-host',{action:'surrenderRoom',roomId});
+    await call(roomAction,'v2-guest',{action:'restartRoom',roomId});
+    await call(roomAction,'v2-host',{action:'restartRoom',roomId});
+    let room=rooms.get(roomId);
+    assert(room.currentTurn==='host'&&room.host.color==='black'&&room.guest.color==='white','last loser gets black, independent of room role');
+    assert(room.roundNumber===2&&room.undoRequestsUsed.guest===0,'rematch resets quotas and advances round');
+    assert(roomViews.get(created.viewId).host.color==='black','public view color must change atomically');
+    await call(roomAction,'v2-host',{action:'placePiece',roomId,row:8,col:8});
+    assert(rooms.get(roomId).board[8][8]===1,'swapped host must place black');
+    // Synthetic finished position exercises draw policy without playing 225 moves.
+    room=rooms.get(roomId);room.status='finished';room.winner=null;room.finishReason='draw';rooms.set(roomId,room);
+    await call(roomAction,'v2-host',{action:'restartRoom',roomId});await call(roomAction,'v2-guest',{action:'restartRoom',roomId});
+    assert(rooms.get(roomId).guest.color==='black','draw exchanges colors');
+    room=rooms.get(roomId);room.rules.rematch='alternate';room.status='finished';room.winner='host';rooms.set(roomId,room);
+    await call(roomAction,'v2-host',{action:'restartRoom',roomId});await call(roomAction,'v2-guest',{action:'restartRoom',roomId});
+    assert(rooms.get(roomId).host.color==='black','alternate option exchanges even when loser was already black');
+    const round=await call(roomAction,'round-host',{action:'createRoom',ruleVersion:2,rules:{turnSeconds:0,undoLimit:3,undoScope:'round',ruleSet:'renju',openingCenter:true}});
+    await call(roomAction,'round-guest',{action:'joinRoom',roomId:round.roomId,ruleVersion:2});
+    await expectFail(roomAction,'round-guest',{action:'placePiece',roomId:round.roomId,row:0,col:0},'center opening must be enforced');
+    assert(!rooms.get(round.roomId).board[0][0],'invalid opening must not write a stone');
+    for(let i=0;i<3;i+=1){
+      await call(roomAction,'round-guest',{action:'placePiece',roomId:round.roomId,row:7,col:7});
+      await call(roomAction,'round-host',{action:'placePiece',roomId:round.roomId,row:7,col:8});
+      const pending=await call(roomAction,'round-guest',{action:'requestUndo',roomId:round.roomId});
+      await call(roomAction,'round-host',{action:'respondUndo',roomId:round.roomId,requestId:pending.roomData.pendingUndo.id,accept:true});
+      assert(rooms.get(round.roomId).moveHistory.length===0,'round undo removes exactly two stones');
+    }
+    await call(roomAction,'round-guest',{action:'placePiece',roomId:round.roomId,row:7,col:7});
+    await call(roomAction,'round-host',{action:'placePiece',roomId:round.roomId,row:7,col:8});
+    await expectFail(roomAction,'round-guest',{action:'requestUndo',roomId:round.roomId},'three-request quota is enforced');
+    // Synthetic private position checks actual transactional foul settlement.
+    const foul=rooms.get(round.roomId);foul.rules.openingCenter=false;foul.board=Array.from({length:15},()=>Array(15).fill(0));
+    [[7,6],[7,8],[6,7],[8,7]].forEach(([r,c])=>{foul.board[r][c]=1;});foul.currentTurn='guest';rooms.set(round.roomId,foul);
+    await call(roomAction,'round-guest',{action:'placePiece',roomId:round.roomId,row:7,col:7});
+    const finished=rooms.get(round.roomId);
+    assert(finished.status==='finished'&&finished.winner==='host'&&finished.finishReason==='foul'&&finished.foulReason==='黑棋双三禁手','black guest foul awards white host');
+    assert(roomViews.get(round.viewId).foulReason===finished.foulReason,'foul reason must be public');
+    await expectFail(roomAction,'round-guest',{action:'requestUndo',roomId:round.roomId},'foul cannot be undone after settlement');
+    const ping=await call(roomAction,'v2-host',{action:'ping'});
+    assert(ping.ruleVersion===1&&ping.advancedRuleVersion===2,'old and new client capability negotiation coexist');
+    console.log('V2 defaults, single/round undo, quotas, center/foul, random colors and loser/draw/alternate rematches verified');
+  } finally { crypto.randomBytes=randomBytes; }
+}
+
 async function main() {
   installMocks();
   const roomAction = loadRoomAction();
@@ -700,6 +765,7 @@ async function main() {
   await verifyDiagnosticsDisabledByDefault(roomAction);
   await verifyHealthPing(roomAction);
   await verifyTimedRules(roomAction);
+  await verifyAdvancedRules(roomAction);
   process.env.ENABLE_ROOM_DIAGNOSTICS = 'true';
   await verifySelfTestMove(roomAction);
   await verifySelfTestMatch(roomAction);

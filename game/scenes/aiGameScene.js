@@ -60,9 +60,12 @@ class AiGameScene {
       : matchRules.normalize(
           params.rules || matchRules.fromSettings(progressStore.read(runtime.wx).settings),
         );
+    this.rules.ruleSet = "freestyle";
+    this.rules.openingCenter = false;
+    this.rules.undoScope = "round";
     this.deadline = 0;
     this.turnStartedAt = 0;
-    this.undoLeft = 2;
+    this.undoLeft = this.rules.undoLimit;
     this.undoStack = [];
     this.finishReason = '';
     this.clock = matchRules.createTicker(() => {
@@ -153,7 +156,7 @@ class AiGameScene {
       this.gameOver ||
       (!this.moves &&
         !this.lastMove &&
-        this.undoLeft === 2 &&
+        this.undoLeft === this.rules.undoLimit &&
         (this.mode === 'ai' || (!this.usedHint && !this.attempts)))
     )
       return;
@@ -427,7 +430,7 @@ class AiGameScene {
         moves: this.moves,
         remainingMs: this.deadline ? Math.max(0, this.deadline - Date.now()) : null,
       });
-      this.undoStack = this.undoStack.slice(-2);
+      this.undoStack = this.undoStack.slice(-this.rules.undoLimit);
     }
     this.moves += 1;
     this.placeMove(grid.row, grid.col, board.BLACK);
@@ -669,7 +672,7 @@ class AiGameScene {
     this.clock.stop();
     this.deadline = 0;
     this.undoStack = [];
-    this.undoLeft = 2;
+    this.undoLeft = this.rules.undoLimit;
     this.finishReason = '';
     this.beginTurn();
     this.runtime.manager.render();

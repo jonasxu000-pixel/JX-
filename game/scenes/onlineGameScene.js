@@ -1,4 +1,5 @@
 const board = require('../../utils/board');
+const gomokuRules = require('../../utils/gomokuRules');
 const onlineGameState = require('../../utils/onlineGameState');
 const boardRenderer = require('../renderers/boardRenderer');
 const { drawButton } = require('../renderers/buttonRenderer');
@@ -22,6 +23,10 @@ class OnlineGameScene {
     this.viewId = params.viewId;
     this.role = params.role || 'host';
     this.color = params.color || (this.role === 'host' ? 'black' : 'white');
+    this.colors = {
+      [this.role]: this.color,
+      [this.role === 'host' ? 'guest' : 'host']: this.color === 'black' ? 'white' : 'black',
+    };
     this.board = board.createBoard();
     this.lastMove = null;
     this.currentPlayer = board.BLACK;
@@ -56,6 +61,7 @@ class OnlineGameScene {
     this.pendingUndo = null;
     this.undoUsed = { host: 0, guest: 0 };
     this.moveCount = 0;
+    this.lastMoveRole = null;
     this.ruleSubmitting = false;
     this.clockSyncing = false;
     this.clockRetryAt = 0;
@@ -67,7 +73,7 @@ class OnlineGameScene {
       if (
         (this.turnDeadline && now >= this.turnDeadline) ||
         (this.pendingUndo && now >= this.pendingUndo.expiresAt) ||
-        (this.ruleVersion === 1 && !this.clockSynced)
+        (this.ruleVersion >= 1 && !this.clockSynced)
       ) {
         if (this.turnDeadline && now >= this.turnDeadline) {
           this.boardLocked = true;
@@ -84,7 +90,7 @@ class OnlineGameScene {
       }
       runtime.manager.render();
       return Boolean(
-        this.turnDeadline || this.pendingUndo || (this.ruleVersion === 1 && !this.clockSynced),
+        this.turnDeadline || this.pendingUndo || (this.ruleVersion >= 1 && !this.clockSynced),
       );
     });
   }
@@ -103,7 +109,7 @@ class OnlineGameScene {
     this.active = true;
     if (this.leaving) return;
     this.clockSynced = false;
-    if (this.ruleVersion === 1 && this.rules.turnSeconds) this.boardLocked = true;
+    if (this.ruleVersion >= 1 && this.rules.turnSeconds) this.boardLocked = true;
     this.loadRoom();
     this.startWatch();
   }
@@ -136,7 +142,7 @@ class OnlineGameScene {
     let sentAt = Date.now();
     const cloud = this.runtime.cloud;
     const request =
-      this.ruleVersion === 1 && cloud.syncRoom
+      this.ruleVersion >= 1 && cloud.syncRoom
         ? cloud.syncRoom(this.roomId)
         : cloud.getRoom(this.viewId);
     return request
@@ -150,7 +156,8 @@ class OnlineGameScene {
       })
       .then((result) => {
         if (!this.active || lifecycle !== this.lifecycle) return;
-        const roomData = result && typeof result==='object' && 'roomData' in result ? result.roomData : result;
+        const roomData =
+          result && typeof result === 'object' && 'roomData' in result ? result.roomData : result;
         if (result && Number.isFinite(result.serverNow)) {
           this.serverOffset = result.serverNow - (sentAt + Date.now()) / 2;
           this.clockSynced = true;
@@ -198,6 +205,16 @@ class OnlineGameScene {
     this.syncRevision += 1;
     if (!roomData) roomSession.clear(this.runtime.wx, this.roomId);
 
+    if (roomData) {
+      this.colors = {
+        host: (roomData.host && roomData.host.color) || 'black',
+        guest:
+          (roomData.guest && roomData.guest.color) ||
+          (roomData.host && roomData.host.color === 'white' ? 'black' : 'white'),
+      };
+      this.color = this.colors[this.role];
+      roomSession.save(this.runtime.wx, this, roomData.status);
+    }
     if (roomData && roomData.status === 'waiting' && this.role === 'host') {
       this.runtime.manager.go('waitRoom', {
         roomId: this.roomId,
@@ -224,6 +241,7 @@ class OnlineGameScene {
     const opponentRole = this.role === 'host' ? 'guest' : 'host';
     this.opponentRestartReady = Boolean(restartReady[opponentRole]);
     this.finishReason = roomData && roomData.finishReason;
+    this.foulReason = roomData && roomData.foulReason;
     this.winnerRole = roomData && roomData.winner;
     this.timedOutBy = roomData && roomData.timedOutBy;
     this.ruleVersion = (roomData && roomData.rules && roomData.rules.version) || 0;
@@ -234,6 +252,7 @@ class OnlineGameScene {
     this.pendingUndo = (roomData && roomData.pendingUndo) || null;
     this.undoUsed = (roomData && roomData.undoRequestsUsed) || { host: 0, guest: 0 };
     this.moveCount = (roomData && roomData.moveCount) || 0;
+    this.lastMoveRole = roomData && roomData.lastMove && roomData.lastMove.role;
     this.lockForRules();
     this.surrenderedBy = roomData && roomData.surrenderedBy;
     this.hostPlayer = this.getRoomDisplayPlayer(roomData && roomData.host, 'host');
@@ -250,7 +269,7 @@ class OnlineGameScene {
         this.runtime.feedback
       )
         this.runtime.feedback.move(
-          viewState.currentPlayer !== (this.role === 'host' ? board.BLACK : board.WHITE),
+          viewState.currentPlayer !== (this.color === 'black' ? board.BLACK : board.WHITE),
         );
       this.board = normalizeBoard(roomData.board);
       this.lastMove = roomData.lastMove || null;
@@ -272,7 +291,7 @@ class OnlineGameScene {
       !this.isMyTurn ||
       this.ruleSubmitting ||
       Boolean(this.pendingUndo) ||
-      Boolean(this.ruleVersion === 1 && this.rules.turnSeconds && !this.clockSynced) ||
+      Boolean(this.ruleVersion >= 1 && this.rules.turnSeconds && !this.clockSynced) ||
       Boolean(this.turnDeadline && Date.now() + this.serverOffset >= this.turnDeadline);
   }
 
@@ -347,20 +366,26 @@ class OnlineGameScene {
         width: (width - 52) / 2,
         height: 46,
         text: this.rules.allowUndo
-          ? `申请悔棋 ${Math.max(0, 2 - (this.undoUsed[this.role] || 0))}`
+          ? `申请悔棋 ${Math.max(0, this.rules.undoLimit - (this.undoUsed[this.role] || 0))}`
           : '不可悔棋',
         fontSize: 13,
         variant: 'gold',
         disabled:
           this.gameOver ||
           !this.rules.allowUndo ||
-          !this.isMyTurn ||
-          this.moveCount < 2 ||
+          (this.rules.undoScope === 'move'
+            ? this.lastMoveRole !== this.role || this.moveCount < 1
+            : !this.isMyTurn || this.moveCount < 2) ||
           Boolean(this.pendingUndo) ||
           this.ruleSubmitting ||
+          this.moveSubmitting ||
+          this.syncing ||
           this.leaving ||
-          this.boardLocked ||
-          (this.undoUsed[this.role] || 0) >= 2,
+          (this.rules.undoScope === 'move'
+            ? (this.rules.turnSeconds && !this.clockSynced) ||
+              (this.turnDeadline && Date.now() + this.serverOffset >= this.turnDeadline)
+            : this.boardLocked) ||
+          (this.undoUsed[this.role] || 0) >= this.rules.undoLimit,
         onTap: () => this.submitRule('requestUndo'),
       });
       drawLabel(
@@ -404,7 +429,10 @@ class OnlineGameScene {
     const own = pending.by === this.role;
     drawUndoPrompt(ctx, input, this.runtime, {
       title: own ? '等待对手确认' : '对手申请悔棋',
-      note: '退回双方最近各一手，不补回已用时间',
+      note:
+        pending.removeCount === 1
+          ? `撤回${own ? '自己' : '对方'}刚落下的一手，不补回已用时间`
+          : '退回双方最近各一手，不补回已用时间',
       detail: `${Math.max(0, Math.ceil((pending.expiresAt - Date.now() - this.serverOffset) / 1000))} 秒未回应则拒绝 · 等待也计时`,
       rejectText: own ? '取消申请' : '拒绝',
       onReject: () =>
@@ -451,7 +479,10 @@ class OnlineGameScene {
 
   getRoomDisplayPlayer(roomPlayer, playerRole) {
     if (playerRole === this.role && this.localPlayer) return this.localPlayer;
-    return createDisplayPlayer(roomPlayer, playerRole === 'host' ? '黑棋棋手' : '白棋棋手');
+    return createDisplayPlayer(
+      roomPlayer,
+      this.colors[playerRole] === 'black' ? '黑棋棋手' : '白棋棋手',
+    );
   }
 
   renderPlayerCards(ctx, safeTop) {
@@ -466,7 +497,7 @@ class OnlineGameScene {
       width: cardWidth,
       player: this.hostPlayer,
       role: 'host',
-      label: '黑棋 · 先手',
+      label: this.pieceLabel('host'),
       manager,
       align: 'left',
     });
@@ -476,7 +507,7 @@ class OnlineGameScene {
       width: cardWidth,
       player: this.guestPlayer,
       role: 'guest',
-      label: '白棋 · 后手',
+      label: this.pieceLabel('guest'),
       manager,
       align: 'right',
     });
@@ -488,8 +519,7 @@ class OnlineGameScene {
     const isSelf = role === this.role;
     const isActive =
       !this.gameOver &&
-      ((this.currentPlayer === board.BLACK && role === 'host') ||
-        (this.currentPlayer === board.WHITE && role === 'guest'));
+      this.currentPlayer === (this.colors[role] === 'black' ? board.BLACK : board.WHITE);
     const isLeft = align === 'left';
     const avatarSize = 38;
     const avatarX = isLeft ? x + 1 : x + width - avatarSize - 1;
@@ -510,8 +540,8 @@ class OnlineGameScene {
     const textAlign = isLeft ? 'left' : 'right';
     drawFittedPlayerName(ctx, player.nickname, textX, y + 20, width - 48, textAlign);
     const stoneX = isLeft ? textX + 5 : textX - 5;
-    drawPlayerStone(ctx, stoneX, y + 42, role);
-    const selfLabel = role === 'host' ? '黑棋先手 · 我' : '白棋后手 · 我';
+    drawPlayerStone(ctx, stoneX, y + 42, this.colors[role]);
+    const selfLabel = this.pieceLabel(role) + ' · 我';
     drawLabel(
       ctx,
       isSelf ? selfLabel : label,
@@ -528,7 +558,19 @@ class OnlineGameScene {
     }
   }
 
+  pieceLabel(role) {
+    return this.colors[role] === 'black' ? '黑棋 · 先手' : '白棋 · 后手';
+  }
   getResultPresentation() {
+    if (this.finishReason === 'foul')
+      return {
+        badge: this.winnerRole === this.role ? '胜' : '负',
+        badgeFill: this.winnerRole === this.role ? COLORS.jade : COLORS.danger,
+        title: this.winnerRole === this.role ? '对手禁手，你获胜' : '禁手判负',
+        subtitle: this.foulReason || '黑棋触犯连珠禁手',
+        color: this.winnerRole === this.role ? COLORS.jade : COLORS.danger,
+        note: this.getRestartSubtitle('黑棋恰好五子优先获胜'),
+      };
     if (this.finishReason === 'timeout')
       return {
         badge: this.winnerRole === this.role ? '胜' : '负',
@@ -600,18 +642,18 @@ class OnlineGameScene {
       {
         player: this.hostPlayer,
         nickname: this.hostPlayer.nickname,
-        label: '黑棋 · 先手',
+        label: this.pieceLabel('host'),
         isSelf: this.role === 'host',
         isWinner: winnerRole === 'host',
-        piece: 'black',
+        piece: this.colors.host,
       },
       {
         player: this.guestPlayer,
         nickname: this.guestPlayer.nickname,
-        label: '白棋 · 后手',
+        label: this.pieceLabel('guest'),
         isSelf: this.role === 'guest',
         isWinner: winnerRole === 'guest',
-        piece: 'white',
+        piece: this.colors.guest,
       },
     ];
   }
@@ -635,6 +677,8 @@ class OnlineGameScene {
   getRestartSubtitle(defaultText) {
     if (this.restartReady) return '你已准备，等待对手确认后自动开局';
     if (this.opponentRestartReady) return '对手已准备，等你确认是否继续';
+    if (this.ruleVersion === 2)
+      return this.rules.rematch === 'loser' ? '再战：负方执黑，平局交换棋色' : '再战：双方交换棋色';
     return defaultText;
   }
 
@@ -650,6 +694,17 @@ class OnlineGameScene {
     const grid = boardRenderer.hitTest(x, y, this.boardRect);
     if (!grid || this.board[grid.row][grid.col] !== board.EMPTY) return;
 
+    const openingError = gomokuRules.openingError(
+      this.board,
+      grid.row,
+      grid.col,
+      this.color === 'black' ? board.BLACK : board.WHITE,
+      this.rules,
+    );
+    if (openingError) {
+      showToast(this.runtime.wx, openingError);
+      return;
+    }
     this.moveSubmitting = true;
     this.syncing = true;
     this.boardLocked = true;
@@ -777,13 +832,13 @@ function createDisplayPlayer(roomPlayer, fallbackNickname) {
   };
 }
 
-function drawPlayerStone(ctx, x, y, role) {
+function drawPlayerStone(ctx, x, y, color) {
   ctx.save();
   ctx.beginPath();
   ctx.arc(x, y, 5, 0, Math.PI * 2);
-  ctx.fillStyle = role === 'host' ? '#1D2321' : '#F8F8F5';
+  ctx.fillStyle = color === 'black' ? '#1D2321' : '#F8F8F5';
   ctx.fill();
-  ctx.strokeStyle = role === 'host' ? '#0C0F0E' : '#B8BFBB';
+  ctx.strokeStyle = color === 'black' ? '#0C0F0E' : '#B8BFBB';
   ctx.lineWidth = 1;
   ctx.stroke();
   ctx.restore();

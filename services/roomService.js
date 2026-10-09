@@ -16,15 +16,23 @@ function callRoomAction(data, fallbackMessage) {
     return Promise.reject(new Error('当前环境暂不支持云端好友房'));
   }
 
-  return wx.cloud.callFunction({ name: 'roomAction', data })
-    .then(res => assertCloudResult(res, fallbackMessage))
-    .catch(err => Promise.reject(new Error(toUserMessage(err, fallbackMessage))));
+  return wx.cloud
+    .callFunction({ name: 'roomAction', data })
+    .then((res) => assertCloudResult(res, fallbackMessage))
+    .catch((err) => Promise.reject(new Error(toUserMessage(err, fallbackMessage))));
 }
 
-function createRoom(playerProfile,rules) {
-  const ready=rules?callRoomAction({action:'ping'},'房间服务暂不可用').then(result=>{if(result.ruleVersion!==1)throw new Error('好友规则服务尚未更新，请稍后再试');}):Promise.resolve();
-  return ready.then(()=>callRoomAction({ action: 'createRoom', playerProfile, rules, ruleVersion:1 }, '创建失败'))
-    .then(result => {
+function createRoom(playerProfile, rules) {
+  const ready = rules
+    ? callRoomAction({ action: 'ping' }, '房间服务暂不可用').then((result) => {
+        if (result.advancedRuleVersion !== 2) throw new Error('好友规则服务尚未更新，请稍后再试');
+      })
+    : Promise.resolve();
+  return ready
+    .then(() =>
+      callRoomAction({ action: 'createRoom', playerProfile, rules, ruleVersion: 2 }, '创建失败'),
+    )
+    .then((result) => {
       assertViewId(result.viewId);
       return {
         roomId: result.roomId,
@@ -36,16 +44,18 @@ function createRoom(playerProfile,rules) {
 }
 
 function joinRoom(roomId, playerProfile) {
-  return callRoomAction({ action: 'joinRoom', roomId, playerProfile, ruleVersion:1 }, '加入失败')
-    .then(result => {
-      assertViewId(result.viewId);
-      return {
-        roomId,
-        viewId: result.viewId,
-        role: result.role,
-        color: result.color,
-      };
-    });
+  return callRoomAction(
+    { action: 'joinRoom', roomId, playerProfile, ruleVersion: 2 },
+    '加入失败',
+  ).then((result) => {
+    assertViewId(result.viewId);
+    return {
+      roomId,
+      viewId: result.viewId,
+      role: result.role,
+      color: result.color,
+    };
+  });
 }
 
 function assertViewId(viewId) {
@@ -58,37 +68,45 @@ function watchRoom(viewId, callback, errorCallback) {
   assertViewId(viewId);
   const db = wx.cloud.database();
 
-  return db.collection('roomViews').doc(viewId).watch({
-    onChange(snapshot) {
-      if (snapshot.docs && snapshot.docs.length > 0) {
-        const roomData = snapshot.docs[0];
-        const type = snapshot.docChanges && snapshot.docChanges[0]
-          ? snapshot.docChanges[0].dataType
-          : 'init';
-        callback(roomData, type);
-      } else {
-        const type = snapshot.docChanges && snapshot.docChanges[0]
-          ? snapshot.docChanges[0].dataType
-          : 'remove';
-        callback(null, type);
-      }
-    },
-    onError(err) {
-      if (errorCallback) {
-        errorCallback(new Error(toUserMessage(err, '房间同步失败')));
-      } else {
-        console.error('房间监听错误:', err);
-      }
-    },
-  });
+  return db
+    .collection('roomViews')
+    .doc(viewId)
+    .watch({
+      onChange(snapshot) {
+        if (snapshot.docs && snapshot.docs.length > 0) {
+          const roomData = snapshot.docs[0];
+          const type =
+            snapshot.docChanges && snapshot.docChanges[0]
+              ? snapshot.docChanges[0].dataType
+              : 'init';
+          callback(roomData, type);
+        } else {
+          const type =
+            snapshot.docChanges && snapshot.docChanges[0]
+              ? snapshot.docChanges[0].dataType
+              : 'remove';
+          callback(null, type);
+        }
+      },
+      onError(err) {
+        if (errorCallback) {
+          errorCallback(new Error(toUserMessage(err, '房间同步失败')));
+        } else {
+          console.error('房间监听错误:', err);
+        }
+      },
+    });
 }
 
 function getRoom(viewId) {
   assertViewId(viewId);
   const db = wx.cloud.database();
-  return db.collection('roomViews').doc(viewId).get()
-    .then(res => res.data)
-    .catch(err => Promise.reject(new Error(toUserMessage(err, '房间同步失败'))));
+  return db
+    .collection('roomViews')
+    .doc(viewId)
+    .get()
+    .then((res) => res.data)
+    .catch((err) => Promise.reject(new Error(toUserMessage(err, '房间同步失败'))));
 }
 
 function placePiece(roomId, row, col) {
@@ -98,24 +116,33 @@ function placePiece(roomId, row, col) {
 function restartRoom(roomId) {
   return callRoomAction({ action: 'restartRoom', roomId }, '再来一局失败');
 }
-function syncRoom(roomId) { return callRoomAction({action:'syncRoom',roomId},'房间同步失败'); }
-function requestUndo(roomId) { return callRoomAction({action:'requestUndo',roomId},'悔棋申请失败'); }
-function respondUndo(roomId,requestId,accept) { return callRoomAction({action:'respondUndo',roomId,requestId,accept},'悔棋确认失败'); }
-function cancelUndo(roomId,requestId) { return callRoomAction({action:'cancelUndo',roomId,requestId},'取消悔棋失败'); }
+function syncRoom(roomId) {
+  return callRoomAction({ action: 'syncRoom', roomId }, '房间同步失败');
+}
+function requestUndo(roomId) {
+  return callRoomAction({ action: 'requestUndo', roomId }, '悔棋申请失败');
+}
+function respondUndo(roomId, requestId, accept) {
+  return callRoomAction({ action: 'respondUndo', roomId, requestId, accept }, '悔棋确认失败');
+}
+function cancelUndo(roomId, requestId) {
+  return callRoomAction({ action: 'cancelUndo', roomId, requestId }, '取消悔棋失败');
+}
 
 function surrenderRoom(roomId) {
   return callRoomAction({ action: 'surrenderRoom', roomId }, '投降失败');
 }
 
 function leaveRoom(roomId) {
-  return callRoomAction({ action: 'leaveRoom', roomId }, '离开失败')
-    .then(() => undefined);
+  return callRoomAction({ action: 'leaveRoom', roomId }, '离开失败').then(() => undefined);
 }
 
 function getOpenId() {
-  return wx.cloud.callFunction({
-    name: 'login',
-  }).then(res => res.result.openid);
+  return wx.cloud
+    .callFunction({
+      name: 'login',
+    })
+    .then((res) => res.result.openid);
 }
 
 module.exports = {
@@ -128,5 +155,8 @@ module.exports = {
   surrenderRoom,
   leaveRoom,
   getOpenId,
-  syncRoom,requestUndo,respondUndo,cancelUndo,
+  syncRoom,
+  requestUndo,
+  respondUndo,
+  cancelUndo,
 };

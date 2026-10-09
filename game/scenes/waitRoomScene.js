@@ -104,6 +104,8 @@ class WaitRoomScene {
       this.runtime.manager.render();
       return;
     }
+    this.color=roomData[this.role] && roomData[this.role].color || this.color;
+    roomSession.save(this.runtime.wx,this,roomData.status);
     this.rules=roomData.rules||{turnSeconds:0,allowUndo:false};
 
     if (roomData.status === 'playing' && !this.transitionStarted) {
@@ -246,7 +248,7 @@ class WaitRoomScene {
 
     drawLabel(
       ctx,
-      `${this.role==='host'?'你执黑 · ':'你执白 · '}${require('../../utils/matchRules').summary(this.rules)}`,
+      `${this.color==='black'?'你执黑 · ':'你执白 · '}${require('../../utils/matchRules').summary(this.rules)}`,
       width / 2,
       top + 254,
       'center',

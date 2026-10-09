@@ -193,7 +193,7 @@ function createWxMock() {
         if (options.name === 'login') {
           return Promise.resolve({ result: { openid: 'test-wechat-openid' } });
         }
-        return Promise.resolve({ result: { success: true,ruleVersion:1 } });
+        return Promise.resolve({ result: { success: true,ruleVersion:1,advancedRuleVersion:2 } });
       },
     },
   };

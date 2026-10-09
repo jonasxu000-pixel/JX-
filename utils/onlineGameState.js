@@ -1,11 +1,18 @@
 const board = require('./board');
 
-function roleToPiece(role) {
-  return role === 'host' ? board.BLACK : board.WHITE;
+function roleToPiece(role, room) {
+  const color = room && room[role] && room[role].color;
+  return color
+    ? color === 'black'
+      ? board.BLACK
+      : board.WHITE
+    : role === 'host'
+      ? board.BLACK
+      : board.WHITE;
 }
 
-function pieceToRole(piece) {
-  return piece === board.BLACK ? 'host' : 'guest';
+function pieceToRole(piece, room) {
+  return piece === roleToPiece('host', room) ? 'host' : 'guest';
 }
 
 function getWinnerText(winnerRole, myRole) {
@@ -26,21 +33,19 @@ function deriveOnlineGameState(roomData, myRole) {
     };
   }
 
-  const currentPlayer = roleToPiece(roomData.currentTurn || 'host');
+  const currentPlayer = roleToPiece(roomData.currentTurn || 'host', roomData);
   const isFinished = roomData.status === 'finished';
   const isWaiting = roomData.status === 'waiting';
-  const isMyTurn = roomData.status === 'playing'
-    && roomData.currentTurn === myRole
-    && !roomData.winner;
+  const isMyTurn =
+    roomData.status === 'playing' && roomData.currentTurn === myRole && !roomData.winner;
 
   if (isFinished) {
-    let resultText = roomData.winner
-      ? getWinnerText(roomData.winner, myRole)
-      : '\u548c\u68cb';
+    let resultText = roomData.winner ? getWinnerText(roomData.winner, myRole) : '\u548c\u68cb';
     if (roomData.finishReason === 'surrender') {
-      resultText = roomData.surrenderedBy === myRole
-        ? '\u4f60\u5df2\u6295\u964d'
-        : '\u5bf9\u624b\u6295\u964d\uff0c\u4f60\u83b7\u80dc';
+      resultText =
+        roomData.surrenderedBy === myRole
+          ? '\u4f60\u5df2\u6295\u964d'
+          : '\u5bf9\u624b\u6295\u964d\uff0c\u4f60\u83b7\u80dc';
     }
     return {
       currentPlayer,

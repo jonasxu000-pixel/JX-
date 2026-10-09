@@ -14,7 +14,7 @@ async function run() {
   try {
     const { runtime, wx } = createTestRuntime();
     const manager = runtime.manager;
-    manager.go('aiGame', { rules: { turnSeconds: 30, allowUndo: true } });
+    manager.go('aiGame', { rules: { turnSeconds: 30, allowUndo: true, undoLimit: 2 } });
     let scene = manager.current;
     now += 5000;
     tapBoard(scene, 7, 7);
@@ -61,7 +61,7 @@ async function run() {
     assert.equal(progress.read(wx).ai.normal.loss, 1);
     scene.undo();
     assert.equal(JSON.stringify(scene.board), boardBefore, 'finished match cannot be undone');
-    manager.go('localGame', { rules: { turnSeconds: 30, allowUndo: true } });
+    manager.go('localGame', { rules: { turnSeconds: 30, allowUndo: true, undoLimit: 2 } });
     scene = manager.current;
     now += 5000;
     tapBoard(scene, 7, 7);
@@ -105,7 +105,7 @@ async function run() {
       guest: { nickname: '白方' },
       currentTurn: 'host',
       board: Array.from({ length: 15 }, () => Array(15).fill(0)),
-      rules: { version: 1, turnSeconds: 30, allowUndo: true },
+      rules: { version: 1, turnSeconds: 30, allowUndo: true, undoLimit: 2 },
       turnDeadline: now - 120000 + 30000,
       moveCount: 0,
     };
