@@ -18,7 +18,8 @@ function drawSubtitle(ctx, text, x, y) {
 
 function drawLabel(ctx, text, x, y, align = 'left', options = {}) {
   ctx.fillStyle = options.color || COLORS.ink;
-  ctx.font = `${options.bold ? '700 ' : '400 '}${options.size || 16}px ${options.family || '"PingFang SC", "Microsoft YaHei", sans-serif'}`;
+  // 11px floor keeps helper text legible on small phones
+  ctx.font = `${options.bold ? '700 ' : '400 '}${Math.max(11, options.size || 16)}px ${options.family || '"PingFang SC", "Microsoft YaHei", sans-serif'}`;
   ctx.textAlign = align;
   ctx.textBaseline = 'middle';
   ctx.fillText(fitText(ctx, text, options.maxWidth), x, y);

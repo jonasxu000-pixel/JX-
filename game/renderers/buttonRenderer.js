@@ -64,10 +64,28 @@ function drawButton(ctx, input, options) {
   ctx.fillStyle = resolvedFill;
   ctx.fill();
   ctx.shadowColor = 'transparent';
+  if (variant === 'primary' && !disabled && !fill) {
+    // soft top highlight gives the primary action a lit, tactile surface
+    roundedRectPath(ctx, x + 1, drawY + 1, width - 2, Math.max(2, height * 0.42), Math.max(2, radius - 1));
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+    ctx.fill();
+  }
   if (resolvedStroke) {
+    // rebuild the full outline: the highlight above replaced the current path
+    roundedRectPath(ctx, x, drawY, width, height, radius);
     ctx.strokeStyle = resolvedStroke;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = variant === 'secondary' ? 1.5 : 1;
     ctx.stroke();
+  }
+  if (!disabled && !pressed && variant !== 'primary' && !fill) {
+    // thin inner bottom edge gives secondary surfaces a subtle paper lift
+    ctx.fillStyle = 'rgba(179, 131, 62, 0.14)';
+    ctx.fillRect(x + radius, drawY + height - 2, Math.max(0, width - radius * 2), 1);
+  }
+  if (pressed) {
+    ctx.fillStyle = 'rgba(20, 35, 29, 0.08)';
+    roundedRectPath(ctx, x, drawY, width, height, radius);
+    ctx.fill();
   }
 
   ctx.fillStyle = resolvedText;

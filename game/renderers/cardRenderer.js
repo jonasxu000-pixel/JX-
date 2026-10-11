@@ -42,6 +42,13 @@ function drawCard(ctx, options) {
     ctx.lineWidth = strokeWidth;
     ctx.stroke();
   }
+  if (shadow && width > 40 && height > 40) {
+    // faint inner top edge lifts raised cards off the background
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
+    ctx.lineWidth = 1;
+    roundedRectPath(ctx, x + 1.5, y + 1.5, width - 3, height - 3, Math.max(0, radius - 1.5));
+    ctx.stroke();
+  }
   ctx.restore();
 }
 

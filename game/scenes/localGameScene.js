@@ -96,6 +96,7 @@ class LocalGameScene {
           : '同屏轮流',
       fill: COLORS.goldSoft,
       color: '#79551D',
+      stroke: '#D9BE86',
     });
     if (this.gameOver)
       drawLabel(ctx, statusText, width / 2, safeTop + 59, 'center', { bold: true, size: 15 });
@@ -105,6 +106,8 @@ class LocalGameScene {
         { x: 20, y: safeTop + 42, width: width - 40, height: 30 },
         statusText,
         this.deadline,
+        Date.now(),
+        { side: this.currentPlayer === board.BLACK ? 'black' : 'white' },
       );
     if (!this.history.length && !this.gameOver)
       input.addHitArea({ x: width - 114, y: safeTop, width: 94, height: 38 }, () =>
@@ -117,7 +120,7 @@ class LocalGameScene {
       width / 2,
       this.boardRect.y + this.boardRect.height + 12,
       'center',
-      { size: 10, color: COLORS.inkMuted },
+      { size: 11, color: '#5F6A63' },
     );
 
     if (!this.gameOver) {

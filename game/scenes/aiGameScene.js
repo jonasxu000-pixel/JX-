@@ -289,11 +289,19 @@ class AiGameScene {
           { x: width - 116, y: layout.safeTop + 87, width: 96, height: 30 },
           '',
           this.deadline,
+          Date.now(),
+          { side: this.currentPlayer === board.BLACK ? 'black' : 'white' },
         );
       else
-        drawLabel(ctx, 'AI 思考', width - 68, layout.safeTop + 103, 'center', {
-          size: 12,
-          color: COLORS.gold,
+        drawPill(ctx, {
+          x: width - 116,
+          y: layout.safeTop + 88,
+          width: 96,
+          height: 28,
+          text: 'AI 思考中',
+          fill: COLORS.goldSoft,
+          color: '#79551D',
+          stroke: '#D9BE86',
         });
     }
     boardRenderer.drawBoard(ctx, this.board, this.lastMove, this.boardRect);

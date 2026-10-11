@@ -147,8 +147,16 @@ function drawResultOverlay(ctx, input, options) {
     height: layout.cardHeight,
     radius: 24,
     fill: '#FFFCF5',
-    stroke: '#CDBB96',
+    stroke: '#C4AE82',
+    strokeWidth: 1.5,
   });
+  // tinted header band echoes the result colour above the divider
+  ctx.save();
+  ctx.globalAlpha = ctx.globalAlpha * 0.07;
+  ctx.fillStyle = presentation.badgeFill || COLORS.jade;
+  roundedRectPath(ctx, layout.cardX + 1, layout.cardY + 1, layout.cardWidth - 2, 111, 23);
+  ctx.fill();
+  ctx.restore();
   ctx.save();
   ctx.strokeStyle = '#E4D7BC';
   ctx.lineWidth = 1;
@@ -166,12 +174,13 @@ function drawResultOverlay(ctx, input, options) {
 
   drawLabel(ctx, presentation.title, centerX, layout.cardY + 70, 'center', {
     bold: true,
-    size: 24,
+    size: 28,
+    family: '"STKaiti", "KaiTi", "PingFang SC", serif',
     color: presentation.color,
   });
   drawLabel(ctx, presentation.subtitle, centerX, layout.cardY + 99, 'center', {
-    size: 13,
-    color: COLORS.inkMuted,
+    size: 14,
+    color: '#5F6A63',
     maxWidth: layout.cardWidth - 40,
   });
 
@@ -322,11 +331,13 @@ function drawResultPlayer(ctx, options) {
 
   drawLabel(ctx, formatName(nickname), x + width / 2, y + 68, 'center', {
     bold: true,
-    size: 13,
+    size: 14,
     color: COLORS.ink,
+    maxWidth: width - 12,
   });
   drawLabel(ctx, `${label}${isSelf ? ' · 我' : ''}`, x + width / 2, y + 91, 'center', {
-    size: 11,
+    size: 12,
+    bold: isWinner,
     color: isWinner ? COLORS.jade : COLORS.inkMuted,
   });
 }

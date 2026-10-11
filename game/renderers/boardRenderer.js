@@ -30,6 +30,33 @@ function drawBoard(ctx, boardState, lastMove, rect) {
   ctx.fillStyle = COLORS.board;
   ctx.fill();
   ctx.shadowColor = 'transparent';
+
+  // Static wood feel: soft light-to-dark wash plus faint grain lines, no assets.
+  if (typeof ctx.createLinearGradient === 'function') {
+  const wash = ctx.createLinearGradient(rect.x, rect.y, rect.x + rect.width, rect.y + rect.height);
+  wash.addColorStop(0, 'rgba(255, 240, 200, 0.28)');
+  wash.addColorStop(0.55, 'rgba(255, 240, 200, 0)');
+  wash.addColorStop(1, 'rgba(120, 80, 20, 0.16)');
+  roundedRectPath(ctx, rect.x, rect.y, rect.width, rect.height, radius);
+  ctx.fillStyle = wash;
+  ctx.fill();
+  }
+  ctx.save();
+  roundedRectPath(ctx, rect.x, rect.y, rect.width, rect.height, radius);
+  ctx.clip();
+  ctx.strokeStyle = 'rgba(140, 101, 39, 0.07)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let g = 0; g < 18; g += 1) {
+    const gy = rect.y + ((g * 37 + 11) % 100) / 100 * rect.height;
+    const sway = ((g % 5) - 2) * 2.2;
+    ctx.moveTo(rect.x, gy);
+    ctx.quadraticCurveTo(rect.x + rect.width / 2, gy + sway, rect.x + rect.width, gy - sway);
+  }
+  ctx.stroke();
+  ctx.restore();
+
+  roundedRectPath(ctx, rect.x, rect.y, rect.width, rect.height, radius);
   ctx.strokeStyle = '#B98B43';
   ctx.lineWidth = 1;
   ctx.stroke();
@@ -115,25 +142,25 @@ function drawPiece(ctx, rect, row, col, piece) {
 
   ctx.beginPath();
   ctx.arc(x, y, radius, 0, Math.PI * 2);
+  const hx = x - radius * 0.35;
+  const hy = y - radius * 0.38;
+  const grad = ctx.createRadialGradient(hx, hy, radius * 0.08, x, y, radius);
   if (piece === board.BLACK) {
-    const grad = ctx.createRadialGradient(x - 2, y - 2, 0, x, y, radius);
-    grad.addColorStop(0, '#555555');
-    grad.addColorStop(1, '#1A1A1A');
-    ctx.fillStyle = grad;
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.32)';
+    grad.addColorStop(0, '#5E5E5A');
+    grad.addColorStop(1, '#141414');
   } else {
-    const grad = ctx.createRadialGradient(x - 2, y - 2, 0, x, y, radius);
-    grad.addColorStop(0, '#ffffff');
-    grad.addColorStop(1, '#FAFAFA');
-    ctx.fillStyle = grad;
-    ctx.shadowColor = 'rgba(255, 255, 255, 0.5)';
+    grad.addColorStop(0, '#FFFFFF');
+    grad.addColorStop(1, '#E4E2DA');
   }
+  ctx.fillStyle = grad;
+  // Dark warm shadow on both colors so white stones separate from the wood.
+  ctx.shadowColor = piece === board.BLACK ? 'rgba(0, 0, 0, 0.4)' : 'rgba(58, 39, 14, 0.38)';
   ctx.shadowBlur = 5;
   ctx.shadowOffsetY = 2;
   ctx.fill();
   ctx.shadowColor = 'transparent';
   if (piece === board.WHITE) {
-    ctx.strokeStyle = '#D8D8D4';
+    ctx.strokeStyle = '#C9C5B8';
     ctx.lineWidth = 1;
     ctx.stroke();
   }

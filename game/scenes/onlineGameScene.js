@@ -333,6 +333,7 @@ class OnlineGameScene {
       this.syncing ? '正在同步棋局…' : this.statusText,
       this.turnDeadline,
       Date.now() + this.serverOffset,
+      this.gameOver ? null : { side: this.currentPlayer === board.BLACK ? 'black' : 'white' },
     );
     if (!this.gameOver) {
       drawButton(ctx, input, {
@@ -394,7 +395,7 @@ class OnlineGameScene {
         width / 2,
         this.boardRect.y + this.boardRect.height + 86,
         'center',
-        { size: 10, color: '#816B4C', maxWidth: width - 36 },
+        { size: 11, color: '#6B5A3F', maxWidth: width - 36 },
       );
     }
 

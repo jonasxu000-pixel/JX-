@@ -31,11 +31,12 @@ function loadAtlas(wxApi, onReady) { return loadAsset(wxApi, ATLAS, onReady); }
 function loadBackdrop(wxApi, onReady) { return loadAsset(wxApi, BACKDROP, onReady); }
 
 function drawPlate(ctx, rect, kind, atlas) {
-  if (!atlas) {
-    drawCard(ctx, { ...rect, radius: 22, fill: { jade: '#227568', gold: '#F2C46F', cream: '#F7EEDC' }[kind], stroke: '#D6BC83' });
-    return;
-  }
+  // Calm solid panel is the base; the painted glow frame is only a faint accent on top.
+  const hero = kind === 'jade';
+  drawCard(ctx, { ...rect, radius: hero ? 22 : 18, fill: { jade: '#24695C', gold: '#F4DFB0', cream: '#F8F1E2' }[kind], stroke: hero ? '#C9B07A' : '#D9C8A2', strokeWidth: 1.5, shadow: false });
+  if (!atlas) return;
   const [sx, sy, sw, sh] = REGIONS[kind];
+  ctx.save(); ctx.globalAlpha = hero ? 0.3 : 0.22;
   // Nine-slice retains the painted bevel when panels have different proportions.
   const edge = 54; const target = Math.min(16, rect.width / 4, rect.height / 4);
   const srcX = [sx, sx + edge, sx + sw - edge]; const srcY = [sy, sy + edge, sy + sh - edge];
@@ -43,16 +44,19 @@ function drawPlate(ctx, rect, kind, atlas) {
   const dstX = [rect.x, rect.x + target, rect.x + rect.width - target]; const dstY = [rect.y, rect.y + target, rect.y + rect.height - target];
   const dstW = [target, rect.width - 2 * target, target]; const dstH = [target, rect.height - 2 * target, target];
   for (let r = 0; r < 3; r += 1) for (let c = 0; c < 3; c += 1) ctx.drawImage(atlas, srcX[c], srcY[r], srcW[c], srcH[r], dstX[c], dstY[r], dstW[c], dstH[r]);
+  ctx.restore();
 }
-function drawBoardVignette(ctx, atlas, rect) {
+function drawBoardVignette(ctx, atlas, rect, alpha = 0.8) {
   if (!atlas) return;
   const [sx,sy,sw,sh] = REGIONS.friends;
   const size = Math.min(rect.width / sw, rect.height / sh);
+  ctx.save(); ctx.globalAlpha = alpha;
   ctx.drawImage(atlas, sx, sy, sw, sh, rect.x + (rect.width - sw * size) / 2, rect.y + (rect.height - sh * size) / 2, sw * size, sh * size);
+  ctx.restore();
 }
 function drawIconButton(ctx, input, rect, icon, onTap, color = '#32675C') {
   const pressed = input.isPressed(rect);
-  drawCard(ctx, { ...rect, radius: rect.height / 2, fill: pressed ? '#E1D2B9' : '#F6ECDC', stroke: '#DBCAAC', shadow: false });
+  drawCard(ctx, { ...rect, radius: rect.height / 2, fill: pressed ? '#E1D2B9' : '#F6ECDC', stroke: pressed ? '#B79F78' : '#C9B592', strokeWidth: 1.5, shadow: false });
   drawIcon(ctx, icon, rect.x + (rect.width - 23) / 2, rect.y + (rect.height - 23) / 2, 23, color);
   input.addHitArea(rect, onTap);
 }

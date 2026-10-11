@@ -207,15 +207,23 @@ class HomeScene {
     const atlas = lobby.loadAtlas(wx, this.onImageReady);
     const backdrop = lobby.loadBackdrop(wx, this.onImageReady);
     ctx.fillStyle = '#F2ECDF'; ctx.fillRect(0, 0, width, height);
-    if (backdrop) ctx.drawImage(backdrop, 0, 0, width, height);
+    if (backdrop) {
+      ctx.drawImage(backdrop, 0, 0, width, height);
+      // Warm paper veil mutes the photo so the entry panels lead.
+      ctx.fillStyle = 'rgba(244, 238, 224, 0.62)'; ctx.fillRect(0, 0, width, height);
+    }
     drawAvatar(ctx, wx, this.player, 20, layout.playerY, 48, this.onImageReady);
     drawLabel(ctx, this.player ? this.player.nickname : '游客', 44, layout.playerY + 58, 'center', { size: 9, color: '#81755E', maxWidth: 62 });
     if (this.player || !this.userInfoButton) input.addHitArea({ x: 20, y: layout.playerY, width: 48, height: 48 }, () => {
       if (!this.player) { this.loginWithWeChat(); return; }
       this.sheet = 'player'; this.stopAnimation(); manager.render();
     });
-    ctx.fillStyle = '#214E42'; ctx.font = '700 25px "STKaiti", "KaiTi", serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.save();
+    ctx.fillStyle = 'rgba(255, 250, 236, 0.7)'; ctx.font = '700 27px "STKaiti", "KaiTi", serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('棋遇五子棋', width / 2, layout.playerY + 19);
+    ctx.fillStyle = '#14382B'; ctx.font = '700 27px "STKaiti", "KaiTi", serif';
     ctx.fillText('棋遇五子棋', width / 2, layout.playerY + 18);
+    ctx.restore();
     const rank = progressStore.level(data);
     drawLabel(ctx, `${rank.title} · ${data.xp} 修习值`, width / 2, layout.playerY + 43, 'center', { size: 9, color: '#837456' });
     drawProgressBar(ctx, width / 2 - 42, layout.playerY + 53, 84, rank.ratio);
@@ -263,7 +271,7 @@ class HomeScene {
       drawLabel(ctx, label, rect.x + 49, rect.y + rect.height / 2, 'left', { bold: true, size: width < 350 ? 13 : 14, color: '#65583D' });
       input.addHitArea(rect, () => scene==='localGame'?manager.go('matchSetup',{mode:'local'}):manager.go(scene)); lobby.pressOverlay(ctx, input, rect);
     });
-    drawCard(ctx, { x: width / 2 - 115, y: actions.noteY - 9, width: 230, height: 18, radius: 9, fill: 'rgba(250,244,231,.82)', stroke: null, shadow: false });
+    drawCard(ctx, { x: width / 2 - 120, y: actions.noteY - 10, width: 240, height: 20, radius: 10, fill: 'rgba(250,244,231,.9)', stroke: 'rgba(216,197,166,.7)', shadow: false });
     drawLabel(ctx, '自由五子棋 · 黑棋先行 · 无禁手', width / 2, actions.noteY, 'center', { size: 10, color: '#76684D' });
     if (this.sheet === 'player') this.drawPlayerSheet(ctx, input, data);
   }
