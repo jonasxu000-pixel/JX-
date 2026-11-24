@@ -509,10 +509,10 @@ function playLocal(blacks, last, expected) {
   function tap([r, c]) {
     const padding = scene.boardRect.width * 0.08,
       cell = (scene.boardRect.width - padding * 2) / 14;
-    scene.handleTouch(
-      scene.boardRect.x + padding + c * cell,
-      scene.boardRect.y + padding + r * cell,
-    );
+    const x = scene.boardRect.x + padding + c * cell;
+    const y = scene.boardRect.y + padding + r * cell;
+    scene.handleTouch(x, y);
+    scene.handleTouch(x, y);
   }
   blacks.forEach((move, i) => {
     tap(move);

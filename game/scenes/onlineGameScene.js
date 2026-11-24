@@ -14,6 +14,7 @@ const { getStoredPlayer } = require('../../utils/playerSession');
 const { showToast } = require('../../utils/clipboard');
 const roomSession = require('../../utils/roomSession');
 const matchRules = require('../../utils/matchRules');
+const progress = require('../../utils/progressStore');
 const { drawClock, drawUndoPrompt } = require('../renderers/ruleRenderer');
 
 class OnlineGameScene {
@@ -59,6 +60,8 @@ class OnlineGameScene {
     this.serverOffset = 0;
     this.clockSynced = false;
     this.pendingUndo = null;
+    this.pendingMove = null;
+    this.confirmMoveEnabled = progress.read(runtime.wx).settings.confirmMove !== false;
     this.undoUsed = { host: 0, guest: 0 };
     this.moveCount = 0;
     this.lastMoveRole = null;
@@ -97,6 +100,7 @@ class OnlineGameScene {
 
   onEnter() {
     this.active = true;
+    this.confirmMoveEnabled = progress.read(this.runtime.wx).settings.confirmMove !== false;
     roomSession.save(this.runtime.wx, this);
     this.loadRoom();
     this.startWatch();
@@ -107,6 +111,7 @@ class OnlineGameScene {
     this.readsInFlight = 0;
     this.clockSyncing = false;
     this.active = true;
+    this.confirmMoveEnabled = progress.read(this.runtime.wx).settings.confirmMove !== false;
     if (this.leaving) return;
     this.clockSynced = false;
     if (this.ruleVersion >= 1 && this.rules.turnSeconds) this.boardLocked = true;
@@ -119,6 +124,7 @@ class OnlineGameScene {
     this.readsInFlight = 0;
     this.clockSyncing = false;
     this.active = false;
+    this.pendingMove = null;
     this.clock.stop();
     this.clearWatch();
     this.clearRestart();
@@ -129,6 +135,7 @@ class OnlineGameScene {
     this.readsInFlight = 0;
     this.exited = true;
     this.active = false;
+    this.pendingMove = null;
     this.clock.stop();
     this.clearWatch();
     this.clearRestart();
@@ -148,7 +155,7 @@ class OnlineGameScene {
     return request
       .then((result) => {
         if (!this.active || lifecycle !== this.lifecycle) return null;
-        if (result && result.rules && result.rules.version === 1 && cloud.syncRoom) {
+        if (result && result.rules && result.rules.version >= 1 && cloud.syncRoom) {
           sentAt = Date.now();
           return cloud.syncRoom(this.roomId);
         }
@@ -203,6 +210,7 @@ class OnlineGameScene {
   applyRoom(roomData) {
     if (!this.active || this.leaving) return;
     this.syncRevision += 1;
+    this.pendingMove = null;
     if (!roomData) roomSession.clear(this.runtime.wx, this.roomId);
 
     if (roomData) {
@@ -276,6 +284,10 @@ class OnlineGameScene {
     }
 
     if (this.shouldShowResult && !wasShowingResult) {
+      if (this.runtime.feedback && this.runtime.feedback.result) {
+        const outcome = !this.winnerRole ? 'draw' : this.winnerRole === this.role ? 'win' : 'loss';
+        this.runtime.feedback.result(outcome);
+      }
       this.resultReveal.show();
     } else if (!this.shouldShowResult && wasShowingResult) {
       this.resultReveal.hide();
@@ -327,10 +339,15 @@ class OnlineGameScene {
     drawRoomHeading(ctx, `好友房 ${this.roomId}`, width / 2, safeTop + 10);
     this.renderPlayerCards(ctx, safeTop);
 
+    const displayStatus = this.syncing
+      ? '正在同步棋局…'
+      : (!this.gameOver && this.isMyTurn && !this.boardLocked && this.pendingMove
+        ? `已预选 ${boardRenderer.formatCoord(this.pendingMove.row, this.pendingMove.col)} · 再点确认`
+        : this.statusText);
     drawClock(
       ctx,
       { x: 16, y: statusY, width: width - 122, height: 38 },
-      this.syncing ? '正在同步棋局…' : this.statusText,
+      displayStatus,
       this.turnDeadline,
       Date.now() + this.serverOffset,
       this.gameOver ? null : { side: this.currentPlayer === board.BLACK ? 'black' : 'white' },
@@ -348,7 +365,12 @@ class OnlineGameScene {
         onTap: () => this.confirmSurrender(),
       });
     }
-    boardRenderer.drawBoard(ctx, this.board, this.lastMove, this.boardRect);
+    boardRenderer.drawBoard(ctx, this.board, this.lastMove, this.boardRect, {
+      pendingMove: !this.gameOver && !this.boardLocked && !this.syncing && !this.moveSubmitting ? this.pendingMove : null,
+      ruleSet: this.rules.ruleSet,
+      openingCenter: this.rules.openingCenter,
+      showWinLine: this.gameOver && this.finishReason !== 'surrender' && this.finishReason !== 'timeout' && this.finishReason !== 'foul' && Boolean(this.winnerRole),
+    });
 
     if (!this.shouldShowResult) {
       drawButton(ctx, input, {
@@ -454,6 +476,7 @@ class OnlineGameScene {
       !this.runtime.cloud[method]
     )
       return;
+    this.pendingMove = null;
     const revision = this.syncRevision;
     const lifecycle = this.lifecycle;
     const sent = Date.now();
@@ -555,7 +578,7 @@ class OnlineGameScene {
       },
     );
     if (isActive) {
-      drawTurnMarker(ctx, isLeft ? x + width - 5 : x + 5, y + 29);
+      drawTurnMarker(ctx, isLeft ? x + width - 14 : x + 14, y + 12);
     }
   }
 
@@ -686,6 +709,7 @@ class OnlineGameScene {
   handleTouch(x, y) {
     if (this.ruleSubmitting) return;
     if (this.turnDeadline && Date.now() + this.serverOffset >= this.turnDeadline) {
+      this.pendingMove = null;
       this.boardLocked = true;
       this.clock.start();
       return;
@@ -693,18 +717,36 @@ class OnlineGameScene {
     if (this.leaving) return;
     if (!this.boardRect || this.boardLocked || this.syncing || this.moveSubmitting) return;
     const grid = boardRenderer.hitTest(x, y, this.boardRect);
-    if (!grid || this.board[grid.row][grid.col] !== board.EMPTY) return;
+    if (!grid || this.board[grid.row][grid.col] !== board.EMPTY) {
+      if (this.pendingMove) {
+        this.pendingMove = null;
+        this.runtime.manager.render();
+      }
+      return;
+    }
 
+    const myPiece = this.color === 'black' ? board.BLACK : board.WHITE;
     const openingError = gomokuRules.openingError(
       this.board,
       grid.row,
       grid.col,
-      this.color === 'black' ? board.BLACK : board.WHITE,
+      myPiece,
       this.rules,
     );
     if (openingError) {
+      this.pendingMove = null;
       showToast(this.runtime.wx, openingError);
+      this.runtime.manager.render();
       return;
+    }
+    if (this.confirmMoveEnabled) {
+      if (!this.pendingMove || this.pendingMove.row !== grid.row || this.pendingMove.col !== grid.col) {
+        this.pendingMove = { row: grid.row, col: grid.col, piece: myPiece };
+        if (this.runtime.feedback && this.runtime.feedback.select) this.runtime.feedback.select();
+        this.runtime.manager.render();
+        return;
+      }
+      this.pendingMove = null;
     }
     this.moveSubmitting = true;
     this.syncing = true;
@@ -750,6 +792,7 @@ class OnlineGameScene {
   confirmSurrender() {
     if (this.leaving) return;
     if (this.gameOver || this.surrenderSubmitting) return;
+    this.pendingMove = null;
     const wxApi = this.runtime.wx;
     if (!wxApi || typeof wxApi.showModal !== 'function') {
       this.submitSurrender();
@@ -789,6 +832,7 @@ class OnlineGameScene {
   async leaveToHome() {
     if (this.leaving || this.exited) return;
     this.leaving = true;
+    this.pendingMove = null;
     this.boardLocked = true;
     this.clearWatch();
     this.clearRestart();
@@ -927,7 +971,7 @@ function drawDuelMedallion(ctx, x, y) {
   ctx.lineWidth = 1.5;
   ctx.stroke();
   ctx.fillStyle = COLORS.gold;
-  ctx.font = '800 9px "Arial Narrow", sans-serif';
+  ctx.font = '800 9px "PingFang SC", "Microsoft YaHei", sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText('VS', x, y);
@@ -937,7 +981,7 @@ function drawDuelMedallion(ctx, x, y) {
 function drawRoomHeading(ctx, text, x, y) {
   ctx.save();
   ctx.fillStyle = COLORS.inkMuted;
-  ctx.font = '700 14px ui-monospace, "SFMono-Regular", Consolas, monospace';
+  ctx.font = '700 14px "PingFang SC", "Microsoft YaHei", ui-monospace, "SFMono-Regular", Consolas, monospace';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(text, x, y);

@@ -1,7 +1,29 @@
 # 棋遇五子棋 - 项目进度
 
-> 最后更新：2026-11-05
-> 本轮结论（2026-11-05）：版本对齐与验收记录整理完成。代码基线仍为 `codex/migrate-minigame` / `e2405bc`（实际视觉源码提交 `ef889b8`）；文档整理前源码与工作区未改，本次仅整理文档。本地三条门禁在 `e2405bc` 上退出码均为 0（执行者 Aion CLI）。核对时远端快照：开发分支 `49b03a9…`（本地领先 10 个提交）、默认分支 `10ae100…`。本地最新版真机/双账号/弱网与今日云端状态均未核实。版本记录为提交/推送前核对快照，同步目标为现有开发分支，最终推送结果以远端 SHA 与本次交付回执确认；本任务不含部署与发布。详见 [VALIDATION_20261105.md](VALIDATION_20261105.md)。
+> 最后更新：2026-11-24
+> 本轮结论（2026-11-24）：基于基线 `ad4e02e` 完成 **RC20 体验升级**（棋盘与程序化音效、双点虚线确认落子、VCT 搜索引擎与 12 道大师级残局/局内辅助机制）。改动后在本地运行 `node scripts/verify-release.js`、`node scripts/verify-gomoku-review.js`、`node scripts/verify-ui-layout.js`，三条门禁退出码均为 `0`，并在桌面 `@napi-rs/canvas` 核对 [rc20 预览图集](previews/rc20/home-375.png)。云函数 `cloudfunctions/` 未改，未执行云端部署、开发者工具上传或真机/双账号弱网实测；`.golutra/` 保持未跟踪。
+
+## 2026-11-24 RC20 体验升级（棋盘与音效、双点虚线落子、大师级残局与 VCT 机制）
+
+- **前端棋盘与音效升级**：
+  - 精细化 `game/renderers/boardRenderer.js` 棋盘与棋子绘制：3px 暖木立体下沿倒角、1.6px 外框与 0.9px 内格线层级、双层星位标点、居中开局虚线环、多段径向渐变与月牙高光立体棋子、`moveNumbers` 手数标注，以及仅在 `gomokuRules.adjudicate` 校验合法胜利后绘制金色连珠胜线与棋子光环（防止连珠超长/禁手误绘）。
+  - 修复桌面 Skia 下裸 `sans-serif` 导致的坐标与数字渲染缺失/乱码（涉及 `boardRenderer.js`、`onlineGameScene.js`、`joinRoomScene.js`、`cardRenderer.js`）；同步修复 `onlineGameScene.js` 的 `rules.version >= 1` 状态同步判断与回合指示棋子定位，修复 `homeScene.js` 在 `375×667` 高胶囊（`bottomInset=34`）下难度按钮与主按钮的 6px 重叠并将底部状态栏升级为基于缓存数据的规则与确认模式展示。
+  - 新增并重制局内程序化音效（`scripts/generate-sfx.py`、`assets/stone.wav`、`assets/stone-select.wav`、`assets/win.wav`、`assets/lose.wav`、`utils/gameFeedback.js`）：预落子轻脆选中音 `select()`、清亮温润落子音、胜/负定音音效 `result(outcome)`，并在 `pause()` 统一停止音效实例。
+- **双点虚线确认落子（防误触）**：
+  - 在 `utils/progressStore.js` 新增 `confirmMove` 配置项（默认 `true`），在 `game/scenes/settingsScene.js`（第 5 行，配 `crosshair` 图标）提供开关并兼容 `320×568` 小屏布局。
+  - `boardRenderer.js` 新增 `pendingMove` 渲染（十字虚线准星、透亮虚线棋子、四角取景框、坐标轴胶囊高亮与顶部浮动坐标提示）；在 `localGameScene.js`、`onlineGameScene.js`、`aiGameScene.js` 全对弈模式中接入“首点预览并触发选中音效，再点同一交点落子，点击他处合法点切换预览，点击盘外取消”。
+- **残局挑战重构与 VCT 大师体系**：
+  - 新增规则感知攻杀引擎 `utils/vctSearch.js`（一维索引与死窗预筛，支持自由/无禁手/连珠禁手规则下的 VCF 与 VCT 活三联合搜索），并升级 `utils/puzzleDefense.js`（550ms 预算封顶、优先识破禁手反杀并选择最长抵抗防守点）。
+  - 保留既有 24 关 ID 与存档兼容，`utils/challengePuzzles.js` 去除坐标剧透文案，新增 12 道大师级残局 `utils/masterPuzzles.js`（`m01`–`m12` 覆盖反先冲四反杀、纯 VCF 无解的真 VCT、8–9 手深层 VCF 与连珠禁手陷阱）。
+  - `utils/puzzles.js` 合并为 36 关 9 章 3 轨体系（入门 `tutorial` / 进阶 `challenge` / 大师 `master`）；`puzzleListScene.js` 升级为三轨筛选；`growthScene.js` 动态展示 `/36` 进度并在 `progressStore.js` 新增两项大师目标（`绝杀初成`、`残局宗师`）。
+  - 完善 `aiGameScene.js` 残局辅助机制与 `resultOverlayRenderer.js` `tertiaryAction` 三按钮兼容：支持残局手数显示、不污染正规人机悔棋限额的单步退回 `stepBack()`、两级实时提示（区域圈定 → `vctSearch.findHint()` 精确推荐）、连珠禁手判负、失先偏离提示，以及败北/思考后的交互式“演示正解”主线走法演示。
+- **本地验收结果与证据边界**：
+  - 所有源码改动完成后在本地执行三条门禁均以退出码 `0` 通过：
+    1. `node scripts/verify-release.js`（含全量语法、源码守卫、AI、残局、进阶规则、大厅、房务、联机、运行时等 10 项子验证）：36 关（12 入门 + 12 进阶 + 12 大师）数学穷举验证与真实 `AiGameScene` 全流程通关均通过；实测桌面单步切片上限 AI `1.16 ms`、`forcingSearch` `1.89 ms`、进阶规则 `0.38 ms`；全部场景通过 `320×568`、`375×667`、`390×844`、`430×932` 及高胶囊（`bottom=96`、`bottomInset=34`）不重叠/无越界检查。
+    2. `node scripts/verify-gomoku-review.js`（规则裁判与边界用例全通过）。
+    3. `node scripts/verify-ui-layout.js`（棋盘边界、坐标双向映射、触摸取消/禁用与主对比度全通过）。
+  - `@napi-rs/canvas` 渲染产物位于 [docs/previews/rc20/](previews/rc20/home-375.png)，已人工抽检大厅、人机与虚线预览、联机、残局三轨列表、大师局内与正解演示、320/375 设置页、加房/候场与结算画面。
+  - **边界说明**：本地测试全部在 Node 环境与内存联机桩中完成，`cloudfunctions/`（`login`、`roomAction`）零修改；未执行云端函数部署、微信开发者工具上传提审、真机/双账号弱网联机及真机硬件音频实测。
 
 ## 2026-11-05 版本对齐与验收记录整理
 

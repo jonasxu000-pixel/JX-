@@ -1,4 +1,5 @@
 const progress = require('../../utils/progressStore');
+const puzzles = require('../../utils/puzzles');
 const { drawButton } = require('../renderers/buttonRenderer');
 const { drawLabel } = require('../renderers/textRenderer');
 const { drawCard } = require('../renderers/cardRenderer');
@@ -20,7 +21,7 @@ class GrowthScene {
     drawLabel(ctx, rank.title, 36, top + 113, 'left', { bold: true, size: 19, color: '#FFF9EA' });
     drawLabel(ctx, `${data.xp} 修习值${rank.next ? ` / ${rank.next}` : ' · 满级'}`, width - 36, top + 113, 'right', { size: 11, color: '#D8B56E' });
     drawProgressBar(ctx, 36, top + 131, width - 72, rank.ratio, true);
-    drawLabel(ctx, `人机 ${total.played} 局 · 获胜 ${total.wins} 局 · 残局 ${total.cleared}/24`, 36, top + 154, 'left', { size: 12, color: '#BECEBC' });
+    drawLabel(ctx, `人机 ${total.played} 局 · 获胜 ${total.wins} 局 · 残局 ${total.cleared}/${puzzles.PUZZLES.length}`, 36, top + 154, 'left', { size: 12, color: '#BECEBC' });
     const gap = 8; const tabWidth = (width - 40 - gap) / 2;
     [['goals','成长目标'],['history','最近战绩']].forEach(([id, title], index) => {
       drawButton(ctx, input, { x: 20 + index * (tabWidth + gap), y: top + 192, width: tabWidth, height: 40, text: title, fontSize: 12, variant: this.tab === id ? 'primary' : 'gold', onTap: () => { this.tab = id; this.page = 0; manager.render(); } });

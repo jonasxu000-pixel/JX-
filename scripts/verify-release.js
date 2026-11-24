@@ -200,6 +200,10 @@ function verifySourceGuards() {
   const iconHeight = icon.readUInt32BE(20);
   assert(iconWidth === iconHeight && iconWidth >= 1024,
     'release icon candidate must be a square PNG of at least 1024 px');
+  assert(fs.existsSync('assets/stone.wav') && fs.existsSync('assets/stone-select.wav'),
+    'stone and select sound assets must exist');
+  assert(fs.existsSync('assets/win.wav') && fs.existsSync('assets/lose.wav'),
+    'outcome sound assets must exist');
   ['app.js', 'app.json', 'app.wxss', 'sitemap.json', 'pages', 'components'].forEach(legacyPath => {
     assert(!fs.existsSync(legacyPath),
       `legacy Mini Program source must stay outside the Mini Game package: ${legacyPath}`);

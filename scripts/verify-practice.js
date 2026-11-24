@@ -1,17 +1,27 @@
 const assert = require('assert/strict');
 const { performance } = require('perf_hooks');
 const rules = require('../utils/board');
+const gomokuRules = require('../utils/gomokuRules');
 const ai = require('../utils/gomokuAi');
 const puzzles = require('../utils/puzzles');
 const forcing = require('../utils/forcingSearch');
+const vctSearch = require('../utils/vctSearch');
 const defense = require('../utils/puzzleDefense');
 const progress = require('../utils/progressStore');
 const matchStore = require('../utils/localMatchStore');
 const roomSession = require('../utils/roomSession');
 const { createFeedback } = require('../utils/gameFeedback');
+const { getResultOverlayLayout } = require('../game/renderers/resultOverlayRenderer');
 const { createTestRuntime } = require('./practice-test-support');
 
-function winningMoves(state, piece) { return ai.collectCandidates(state).filter(move => ai.isWinningMove(state, move.row, move.col, piece)); }
+function winningMoves(state, piece, ruleSet = 'freestyle') {
+  return ai.collectCandidates(state).filter(move => {
+    state[move.row][move.col] = piece;
+    const j = gomokuRules.adjudicate(state, move.row, move.col, piece, ruleSet);
+    state[move.row][move.col] = 0;
+    return j.win && !j.foul;
+  });
+}
 
 function solve(task) {
   let slices = 0; let maximumMs = 0;
@@ -39,7 +49,6 @@ function verifyPuzzles() {
     state[row][col] = rules.BLACK;
     if (puzzle.moves === 1) { assert(rules.checkWin(state, row, col, rules.BLACK), `${puzzle.id} one-move solution invalid`); continue; }
     assert(!rules.checkWin(state, row, col, rules.BLACK));
-    // Exhaust ALL legal white replies, not just the author's expected AI response.
     for (let r = 0; r < 15; r += 1) for (let c = 0; c < 15; c += 1) {
       if (state[r][c]) continue;
       state[r][c] = rules.WHITE;
@@ -49,23 +58,36 @@ function verifyPuzzles() {
     }
   }
   console.log('12 tutorial solutions verified against every legal defending reply');
-  function prove(state, node, remaining, id) {
+
+  function proveExhaustive(state, node, remaining, id, ruleSet = 'freestyle') {
     assert(node && remaining >= node.length, `${id}: invalid proof length`);
     const row = Math.floor(node.move / 15), col = node.move % 15;
-    assert.equal(state[row][col], 0); state[row][col] = 1;
-    if (rules.checkWin(state, row, col, 1)) { assert.equal(node.length, 1); state[row][col] = 0; return; }
+    assert.equal(state[row][col], 0);
+    state[row][col] = 1;
+    const j = gomokuRules.adjudicate(state, row, col, 1, ruleSet);
+    assert(!j.foul, `${id}: foul in proof`);
+    if (j.win) { assert.equal(node.length, 1); state[row][col] = 0; return; }
     for (let r = 0; r < 15; r += 1) for (let c = 0; c < 15; c += 1) {
       if (state[r][c]) continue;
       state[r][c] = 2;
-      assert(!rules.checkWin(state, r, c, 2), `${id}: white can win during proof`);
-      if (!winningMoves(state, 1).length) {
-        assert.equal(node.reply, r * 15 + c, `${id}: an uncovered defending branch`);
-        prove(state, node.next, remaining - 1, id);
+      assert(!gomokuRules.adjudicate(state, r, c, 2, ruleSet).win, `${id}: white can win during proof`);
+      if (!winningMoves(state, 1, ruleSet).length) {
+        const idx = r * 15 + c;
+        let sub = null;
+        if (node.kind === 'three') {
+          sub = (node.branches && node.branches[idx]) || node.defaultNext;
+        } else {
+          assert.equal(node.reply, idx, `${id}: an uncovered defending branch`);
+          sub = node.next;
+        }
+        assert(sub, `${id}: missing sub-proof for white reply ${r},${c}`);
+        proveExhaustive(state, sub, remaining - 1, id, ruleSet);
       } else assert(remaining >= 2);
       state[r][c] = 0;
     }
     state[row][col] = 0;
   }
+
   for (const puzzle of puzzles.CHALLENGES) {
     assert(!ids.has(puzzle.id)); ids.add(puzzle.id);
     const state = puzzles.createPosition(puzzle); const original = JSON.stringify(state);
@@ -83,10 +105,51 @@ function verifyPuzzles() {
     let result; do { result = task.step(4); } while (!result.done);
     assert(result.proof && !result.limited, `${puzzle.id}: no valid forcing plan`);
     assert.equal(result.proof.length, puzzle.moves);
-    prove(state,result.proof,puzzle.moves,puzzle.id);
+    proveExhaustive(state,result.proof,puzzle.moves,puzzle.id, 'freestyle');
     assert.equal(JSON.stringify(state), original, 'proof must restore the board');
   }
   console.log('12 challenge proofs (3-7 moves) exhaust all legal white replies; no one/two-move winning shortcut');
+
+  for (const puzzle of puzzles.MASTERS) {
+    assert(!ids.has(puzzle.id)); ids.add(puzzle.id);
+    const ruleSet = puzzle.ruleSet || 'freestyle';
+    const allowThree = Boolean(puzzle.vct);
+    const state = puzzles.createPosition(puzzle); const original = JSON.stringify(state);
+    const points = [...puzzle.black, ...puzzle.white].map(point => point.join(':'));
+    assert.equal(new Set(points).size, points.length, `${puzzle.id} overlapping stones`);
+    if (['m01', 'm03'].includes(puzzle.id)) {
+      assert(vctSearch.solve(state, 2, 2, { allowThree: false, ruleSet: 'freestyle', maxNodes: 3000 }).proof,
+        `${puzzle.id}: white must hold a 2-move counter threat`);
+    }
+    if (['m02', 'm04'].includes(puzzle.id)) {
+      assert.equal(vctSearch.analyzeThreats(state, 2, 'freestyle', false).wins.length, 1,
+        `${puzzle.id}: white must hold an immediate 4-in-a-row threat`);
+    }
+    if (puzzle.vct) {
+      assert.equal(forcing.solve(state, 1, 9, 12000).proof, null,
+        `${puzzle.id}: true VCT puzzle must have no pure VCF solution`);
+    }
+    if (ruleSet === 'renju') {
+      let hasFoulTrap = false;
+      for (let r = 0; r < 15 && !hasFoulTrap; r += 1) for (let c = 0; c < 15 && !hasFoulTrap; c += 1) {
+        if (state[r][c] !== 0) continue;
+        state[r][c] = 1;
+        const jr = gomokuRules.adjudicate(state, r, c, 1, 'renju');
+        if (jr.foul && vctSearch.solve(state, 1, 2, { allowThree: true, ruleSet: 'freestyle', maxNodes: 2000 }).proof) {
+          hasFoulTrap = true;
+        }
+        state[r][c] = 0;
+      }
+      assert(hasFoulTrap, `${puzzle.id}: renju puzzle must contain a foul trap`);
+    }
+    const shorter = vctSearch.solve(state, 1, puzzle.moves - 1, { allowThree, ruleSet, maxNodes: 15000 });
+    assert.equal(shorter.proof, null, `${puzzle.id}: must not have shorter solution`);
+    const full = vctSearch.solve(state, 1, puzzle.moves, { allowThree, ruleSet, maxNodes: 20000 });
+    assert(full.proof && !full.limited && full.proof.length === puzzle.moves, `${puzzle.id}: missing exact-length proof`);
+    proveExhaustive(state, full.proof, puzzle.moves, puzzle.id, ruleSet);
+    assert.equal(JSON.stringify(state), original, `${puzzle.id}: proof mutated board`);
+  }
+  console.log('12 Master proofs (counter-VCF, VCT, deep 8-9 VCF, Renju foul traps) exhaustively verified');
 }
 
 function verifyAI() {
@@ -125,19 +188,70 @@ function verifyProgress() {
   assert.equal(progress.record(wx, { id: 'p2', mode: 'puzzle', puzzleId: 'p01', outcome: 'win', stars: 3 }).earned, 0);
   assert.equal(progress.read(wx).puzzles.p01, 3);
   assert(progress.goals(progress.read(wx))[0].done);
+  assert.equal(progress.read(wx).settings.confirmMove, true, 'confirmMove must default to enabled');
+  assert(progress.setSetting(wx, 'confirmMove', false));
   assert(progress.setSetting(wx, 'sound', false));
   const newWx = { getStorageSync(key) { return storage[key]; } };
   assert.equal(progress.read(newWx).xp, 45, 'growth must survive runtime recreation');
   assert.equal(progress.read(newWx).settings.sound, false);
+  assert.equal(progress.read(newWx).settings.confirmMove, false);
   wx.setStorageSync = () => { throw new Error('storage full'); };
   assert.equal(progress.record(wx, { ...result, id: 'two' }).saved, false);
   assert.equal(progress.read(wx).ai.normal.win, 2, 'failed persistence must preserve this session only');
-  console.log('Growth persistence, deduplication, goals and storage-failure behavior verified');
+  console.log('Growth persistence, deduplication, goals, confirmMove and storage-failure behavior verified');
+}
+
+function tapOnce(scene, row, col) {
+  const rect = scene.boardRect; const padding = rect.width * 0.08; const cell = (rect.width - padding * 2) / 14;
+  scene.handleTouch(rect.x + padding + col * cell, rect.y + padding + row * cell);
 }
 
 function tapIntersection(scene, row, col) {
-  const rect = scene.boardRect; const padding = rect.width * 0.08; const cell = (rect.width - 2 * padding) / 14;
-  scene.handleTouch(rect.x + padding + col * cell, rect.y + padding + row * cell);
+  tapOnce(scene, row, col);
+  if (scene.confirmMoveEnabled && !scene.gameOver && scene.pendingMove &&
+      scene.pendingMove.row === row && scene.pendingMove.col === col) {
+    tapOnce(scene, row, col);
+  }
+}
+
+function verifyConfirmPreviewAndSfx() {
+  const { runtime, wx } = createTestRuntime();
+  const played = [];
+  wx.createInnerAudioContext = () => {
+    const ctx = { src: '', plays: 0, stops: 0, stop() { this.stops += 1; }, play() { this.plays += 1; played.push(this.src); }, onError() {} };
+    return ctx;
+  };
+  runtime.manager.go('aiGame', { difficulty: 'normal' });
+  let scene = runtime.manager.current;
+  assert.equal(scene.confirmMoveEnabled, true);
+  tapOnce(scene, 7, 7);
+  assert.deepEqual(scene.pendingMove, { row: 7, col: 7, piece: 1 }, 'first tap must stage pendingMove');
+  assert.equal(scene.board[7][7], 0, 'first tap must not place stone yet');
+  assert(played.includes('assets/stone-select.wav'), 'first tap must play select sfx');
+
+  tapOnce(scene, 6, 6);
+  assert.deepEqual(scene.pendingMove, { row: 6, col: 6, piece: 1 }, 'tapping another empty intersection must move pendingMove');
+  assert.equal(scene.board[6][6], 0);
+
+  // Tapping outside board cancels pendingMove
+  scene.handleTouch(2, 2);
+  assert.equal(scene.pendingMove, null, 'tapping outside board must cancel pendingMove');
+
+  tapOnce(scene, 7, 7);
+  tapOnce(scene, 7, 7);
+  assert.equal(scene.board[7][7], 1, 'second tap on same intersection must place stone');
+  assert.equal(scene.pendingMove, null);
+  assert(played.includes('assets/stone.wav'), 'confirm tap must play stone placement sfx');
+
+  // Verify single-tap mode when confirmMove is disabled
+  progress.setSetting(wx, 'confirmMove', false);
+  runtime.manager.go('localGame');
+  const local = runtime.manager.current;
+  assert.equal(local.confirmMoveEnabled, false);
+  tapOnce(local, 7, 7);
+  assert.equal(local.board[7][7], 1, 'disabling confirmMove must allow single-tap placement');
+  runtime.manager.go('home');
+  console.log('Two-tap dashed preview confirmation and select/place audio feedback verified');
 }
 
 function verifyScenes() {
@@ -158,13 +272,75 @@ function verifyScenes() {
   wx.modal.success({ confirm: true }); assert.equal(scene.difficulty, 'hard');
   runtime.manager.go('puzzleGame', { puzzleId: 'p01' }); scene = runtime.manager.current;
   tapIntersection(scene, 0, 0); assert(scene.gameOver); assert.equal(progress.read(wx).puzzles.p01, undefined);
-  scene.restart(); scene.toggleHint(); scene.onHide();
+  scene.restart(); scene.toggleHint();
+  assert.equal(scene.hintLevel, 1); assert(scene.hintData && scene.hintData.zone, 'level-1 hint must expose 3x3 zone');
+  scene.toggleHint();
+  assert.equal(scene.hintLevel, 2, 'level-2 hint must mark exact point');
+  scene.onHide();
   const hinted = matchStore.load(wx); assert(hinted && hinted.usedHint);
   runtime.manager.go('puzzleGame', { puzzleId: 'p01', resume: hinted }); scene = runtime.manager.current;
   tapIntersection(scene, 7, 8); assert(scene.gameOver); assert.equal(progress.read(wx).puzzles.p01, 1);
   assert.equal(matchStore.load(wx), null);
   const xp = progress.read(wx).xp; scene.finishGame('你获胜'); assert.equal(progress.read(wx).xp, xp);
-  runtime.manager.render(); assert.equal(runtime.manager.input.hitAreas.length, 2, 'puzzle result must block underlying controls');
+  runtime.manager.render();
+  const overlayLayout = getResultOverlayLayout(375, 667, 68);
+  assert.equal(runtime.manager.input.hitAreas.length, 3, 'puzzle result must expose 3 overlay actions and block underlying controls');
+  runtime.manager.input.hitAreas.forEach(({ rect }) => {
+    assert(rect.x >= overlayLayout.cardX && rect.x + rect.width <= overlayLayout.cardX + overlayLayout.cardWidth &&
+      rect.y >= overlayLayout.cardY && rect.y + rect.height <= overlayLayout.cardY + overlayLayout.cardHeight,
+      'puzzle result hitAreas must stay inside overlay card');
+  });
+
+  // Verify Demo Mode playback and stepBack on a Master puzzle
+  runtime.manager.go('puzzleGame', { puzzleId: 'm01' });
+  scene = runtime.manager.current;
+  const [sr, sc] = scene.puzzle.solution;
+  tapIntersection(scene, sr, sc);
+  scene.clearAiTimer();
+  scene.performAiMove();
+  assert.equal(scene.moves, 1);
+  assert.equal(scene.puzzleMoves.length, 2);
+  scene.stepBack();
+  assert.equal(scene.moves, 0, 'stepBack must restore moves count');
+  assert.equal(scene.puzzleMoves.length, 0, 'stepBack must clear reverted move numbers');
+  assert.equal(scene.usedStepBack, true);
+
+  // Verify off-line lost-tempo hint detection on m01
+  tapIntersection(scene, 0, 0);
+  scene.clearAiTimer();
+  scene.performAiMove();
+  scene.toggleHint();
+  assert(scene.hintData && scene.hintData.lost, 'hint after straying off winning line must report lost tempo');
+
+  // Verify Demo Mode
+  scene.enterDemoMode();
+  assert.equal(scene.demoMode, true);
+  assert(scene.demoSteps.length >= 4);
+  scene.stepDemo(1);
+  assert.equal(scene.demoIndex, 1);
+  scene.stepDemo(1);
+  assert.equal(scene.demoIndex, 2);
+  scene.stepDemo(-1);
+  assert.equal(scene.demoIndex, 1);
+  scene.restart();
+  assert.equal(scene.demoMode, false);
+
+  // Verify Renju foul trap triggers foul loss on m11 (unlock via clearing m10 first)
+  progress.record(wx, { id: 'unlock-m10-test', mode: 'puzzle', puzzleId: 'm10', outcome: 'win', stars: 3 });
+  runtime.manager.go('puzzleGame', { puzzleId: 'm11' });
+  scene = runtime.manager.current;
+  const m11Board = puzzles.createPosition(scene.puzzle);
+  let trapCell = null;
+  for (let r = 0; r < 15 && !trapCell; r += 1) for (let c = 0; c < 15 && !trapCell; c += 1) {
+    if (m11Board[r][c] !== 0) continue;
+    m11Board[r][c] = 1;
+    if (gomokuRules.adjudicate(m11Board, r, c, 1, 'renju').foul) trapCell = [r, c];
+    m11Board[r][c] = 0;
+  }
+  assert(trapCell);
+  tapIntersection(scene, trapCell[0], trapCell[1]);
+  assert(scene.gameOver && scene.finishReason === 'foul', 'stepping into Renju foul trap must end with foul loss');
+
   runtime.manager.go('puzzleGame', { puzzleId: 'p02' }); assert.equal(runtime.manager.current.puzzle.id, 'p02');
   runtime.manager.go('puzzleGame', { puzzleId: 'p12' }); assert.equal(runtime.manager.current.puzzle, null, 'locked puzzles must reject direct navigation');
   runtime.manager.go('home');
@@ -173,7 +349,7 @@ function verifyScenes() {
   assert.equal(runtime.manager.input.hitAreas.length, 2, 'AI result must block difficulty controls beneath the overlay');
   runtime.manager.go('home');
   storage[matchStore.KEY] = { version: 1, board: [[1]] }; assert.equal(matchStore.load(wx), null);
-  console.log('Difficulty selection, retry, hints, unlocks, result deduplication and cold restart verified');
+  console.log('Difficulty, stepBack, 2-tier hints, Renju foul loss, demo mode, unlocks and cold restart verified');
 }
 
 function verifyPuzzleRuntime() {
@@ -182,22 +358,42 @@ function verifyPuzzleRuntime() {
     runtime.manager.go('puzzleGame', { puzzleId: puzzle.id });
     const scene = runtime.manager.current;
     assert.equal(scene.puzzle.id, puzzle.id);
+    const ruleSet = puzzle.ruleSet || 'freestyle';
+    const allowThree = Boolean(puzzle.vct);
     let node = puzzle.challenge ? puzzle.proof : null;
     tapIntersection(scene, ...puzzle.solution);
     while (!scene.gameOver) {
       scene.clearAiTimer();
-      const result = solve(puzzle.challenge ? defense.createTask(scene.board, puzzle.moves - scene.moves) : ai.createMoveTask(scene.board, 2, 1, { difficulty: 'hard' }));
-      scene.performAiMove(result.move); assert(!scene.gameOver);
-      const winning = winningMoves(scene.board, 1)[0];
-      if (winning) tapIntersection(scene, winning.row, winning.col);
-      else { assert(node && node.next); node = node.next; tapIntersection(scene, Math.floor(node.move / 15), node.move % 15); }
+      const result = solve(
+        puzzle.challenge
+          ? defense.createTask(scene.board, puzzle.moves - scene.moves, { ruleSet, vct: allowThree })
+          : ai.createMoveTask(scene.board, 2, 1, { difficulty: 'hard' }),
+      );
+      scene.performAiMove(result.move);
+      assert(!scene.gameOver, `${puzzle.id}: defender should not win`);
+      const winning = winningMoves(scene.board, 1, ruleSet)[0];
+      if (winning) {
+        tapIntersection(scene, winning.row, winning.col);
+      } else if (node && node.next && result.move && node.reply === result.move.row * 15 + result.move.col) {
+        node = node.next;
+        tapIntersection(scene, Math.floor(node.move / 15), node.move % 15);
+      } else {
+        const branchRes = vctSearch.solve(scene.board, 1, puzzle.moves - scene.moves, {
+          allowThree,
+          ruleSet,
+          maxNodes: 20000,
+        });
+        assert(branchRes.proof, `${puzzle.id}: no winning continuation after defender reply`);
+        node = branchRes.proof;
+        tapIntersection(scene, Math.floor(node.move / 15), node.move % 15);
+      }
     }
-    assert.equal(scene.resultText, '你获胜');
-    assert.equal(progress.read(wx).puzzles[puzzle.id], 3);
+    assert.equal(scene.resultText, '你获胜', `${puzzle.id} must finish with win`);
+    assert.equal(progress.read(wx).puzzles[puzzle.id], 3, `${puzzle.id} first clean win must award 3 stars`);
   }
-  assert.equal(progress.read(wx).xp, 600, '24 first puzzle clears must award exactly 600 XP');
+  assert.equal(progress.read(wx).xp, 900, '36 first puzzle clears must award exactly 900 XP');
   runtime.manager.go('home');
-  console.log('All 24 puzzles completed through the actual scene, defender and unlock flow');
+  console.log('All 36 puzzles completed through the actual scene, defender and unlock flow');
 }
 
 function verifyRecoveryAndFeedback() {
@@ -215,10 +411,15 @@ function verifyRecoveryAndFeedback() {
   let sounds = 0; let vibrations = 0;
   wx.createInnerAudioContext = () => ({ stop() {}, play() { sounds += 1; }, onError() {} });
   wx.vibrateShort = () => { vibrations += 1; };
-  const feedback = createFeedback(wx); feedback.move(); assert.equal(sounds, 1); assert.equal(vibrations, 0);
+  const feedback = createFeedback(wx);
+  feedback.select(); assert.equal(sounds, 1); assert.equal(vibrations, 0);
+  feedback.move(); assert.equal(sounds, 2); assert.equal(vibrations, 0);
+  feedback.result('win'); assert.equal(sounds, 3);
   progress.setSetting(wx, 'sound', false); progress.setSetting(wx, 'vibration', true);
-  feedback.move(); assert.equal(sounds, 1); assert.equal(vibrations, 1);
-  feedback.move(false); assert.equal(vibrations, 1, 'opponent move must not vibrate');
+  feedback.select(); assert.equal(sounds, 3); assert.equal(vibrations, 1);
+  feedback.move(); assert.equal(sounds, 3); assert.equal(vibrations, 2);
+  feedback.move(false); assert.equal(vibrations, 2, 'opponent move must not vibrate');
+  feedback.result('win'); assert.equal(sounds, 3, 'muted sound must suppress outcome audio');
   feedback.pause();
   console.log('Friend-room reference recovery and actual feedback settings verified');
 }
@@ -250,7 +451,18 @@ async function verifyOnlineRevision() {
 function verifyLayouts() {
   for (const [width, height] of [[320,568],[375,667],[390,844],[430,932]]) {
     const { runtime } = createTestRuntime(width, height);
-    for (const [name, params] of [['home',{}],['aiGame',{}],['localGame',{}],['puzzleList',{}],['puzzleGame',{puzzleId:'p01'}],['growth',{}],['settings',{}]]) {
+    for (const [name, params] of [
+      ['home', {}],
+      ['aiGame', {}],
+      ['localGame', {}],
+      ['puzzleList', { track: 'tutorial' }],
+      ['puzzleList', { track: 'challenge' }],
+      ['puzzleList', { track: 'master' }],
+      ['puzzleGame', { puzzleId: 'p01' }],
+      ['puzzleGame', { puzzleId: 'm01' }],
+      ['growth', {}],
+      ['settings', {}],
+    ]) {
       runtime.manager.go(name, params);
       const scene = runtime.manager.current;
       for (const tab of name === 'growth' ? ['goals','history'] : [null]) {
@@ -264,27 +476,56 @@ function verifyLayouts() {
     }
     runtime.manager.go('home');
   }
-  for (const [width, height] of [[375,667],[430,932]]) {
+  const allScenes = [
+    ['home', {}],
+    ['aiGame', {}],
+    ['puzzleGame', { puzzleId: 'm01' }],
+    ['puzzleList', { track: 'master' }],
+    ['growth', {}],
+    ['settings', {}],
+    ['createRoom', {}],
+    ['joinRoom', {}],
+    ['waitRoom', { roomId: '123456', viewId: 'a'.repeat(36), role: 'host' }],
+    ['profile', {}],
+    ['localGame', {}],
+    ['onlineGame', { roomId: '123456', viewId: 'a'.repeat(36), role: 'host' }],
+  ];
+  const compactTallCapsuleScenes = new Set(['home', 'aiGame', 'puzzleGame', 'puzzleList', 'growth', 'settings', 'localGame']);
+  for (const [width, height] of [[320,568],[375,667],[430,932]]) {
     const { runtime, wx, ctx } = createTestRuntime(width, height);
     wx.getMenuButtonBoundingClientRect = () => ({ bottom: 96, right: width - 20 });
     runtime.manager.runtime.bottomInset = 34;
     const InputManager = require('../game/core/inputManager');
-    for (const name of ['home','aiGame','puzzleGame','puzzleList','growth','settings','createRoom','joinRoom','waitRoom','profile','localGame','onlineGame']) {
+    const scenes = width === 320
+      ? allScenes.filter(([name]) => compactTallCapsuleScenes.has(name))
+      : allScenes;
+    for (const [name, params] of scenes) {
       const Scene = runtime.manager.sceneTypes[name];
-      const scene = new Scene({ ...runtime.manager.runtime, manager: { go() {}, render() {} } }, { puzzleId: 'p01', roomId: '123456', viewId: 'a'.repeat(36), role: 'host' });
+      const scene = new Scene({ ...runtime.manager.runtime, manager: { go() {}, render() {} } }, params);
       const input = new InputManager();
       scene.render(ctx, input);
       input.hitAreas.forEach(({ rect }) => {
-        assert(rect.y >= 96 && rect.y + rect.height <= height - 34 + 0.01, `${name} control overlaps notch/home indicator at ${width}x${height}`);
+        assert(rect.y >= 108 && rect.y + rect.height <= height - 34 + 0.01, `${name} control overlaps notch/home indicator at ${width}x${height}: ${JSON.stringify(rect)}`);
+        assert(rect.height >= 38, `${name} target too small at ${width}x${height}`);
       });
+      for (let i = 0; i < input.hitAreas.length; i += 1) {
+        for (let j = i + 1; j < input.hitAreas.length; j += 1) {
+          const a = input.hitAreas[i].rect;
+          const b = input.hitAreas[j].rect;
+          assert(
+            !(a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height),
+            `${name} controls overlap at ${width}x${height}`,
+          );
+        }
+      }
       if (scene.onExit) scene.onExit();
     }
   }
-  console.log('New flows verified at four mobile screen sizes');
+  console.log('All scenes including 3-tier puzzleList and 5-row settings verified across four mobile screen sizes');
 }
 
 async function main() {
-  verifyPuzzles(); verifyAI(); verifyProgress(); verifyScenes(); verifyPuzzleRuntime(); verifyRecoveryAndFeedback(); verifyLayouts();
+  verifyPuzzles(); verifyAI(); verifyProgress(); verifyConfirmPreviewAndSfx(); verifyScenes(); verifyPuzzleRuntime(); verifyRecoveryAndFeedback(); verifyLayouts();
   await verifyOnlineRevision();
   console.log('Practice and growth checks passed');
 }

@@ -1,7 +1,7 @@
 const rules = require('./board');
 
 // Original compact tactical exercises. All use free-style five-in-a-row.
-// Coordinates are [row, column]; every advertised solution is checked in release tests.
+// Coordinates are [row, column]; every advertised solution is checked in release checks.
 const TUTORIALS = [
   { id: 'p01', title: '横线收官', chapter: 1, theme: '找出最后一子', moves: 1, black: [[7,4],[7,5],[7,6],[7,7]], white: [[7,3],[6,5],[8,6],[6,8]], solution: [7,8], hint: '沿着横向四颗黑子，找到没有被白子封住的一端。' },
   { id: 'p02', title: '纵向突破', chapter: 1, theme: '换一个方向观察', moves: 1, black: [[4,7],[5,7],[6,7],[7,7]], white: [[3,7],[5,6],[6,8],[8,5]], solution: [8,7], hint: '黑子的纵向连线只差最后一步。' },
@@ -18,8 +18,19 @@ const TUTORIALS = [
 ];
 
 const CHALLENGES = require('./challengePuzzles');
-const PUZZLES = [...TUTORIALS, ...CHALLENGES];
-const CHAPTERS = ['一子成局', '活四制胜', '双线破局', '连续攻杀', '转线推演', '长链制胜'];
+const MASTERS = require('./masterPuzzles');
+const PUZZLES = [...TUTORIALS, ...CHALLENGES, ...MASTERS];
+const CHAPTERS = [
+  '一子成局',
+  '活四制胜',
+  '双线破局',
+  '连续攻杀',
+  '转线推演',
+  '长链制胜',
+  '绝境反杀',
+  '活三伏杀',
+  '巅峰禁手',
+];
 
 function getPuzzle(id) { return PUZZLES.find(puzzle => puzzle.id === id) || null; }
 function createPosition(puzzle) {
@@ -34,4 +45,4 @@ function isUnlocked(index, progress) {
   return index % 4 === 0 || Boolean(progress.puzzles[PUZZLES[index - 1].id]) || Boolean(progress.puzzles[PUZZLES[index].id]);
 }
 
-module.exports = { PUZZLES, TUTORIALS, CHALLENGES, CHAPTERS, getPuzzle, createPosition, isUnlocked };
+module.exports = { PUZZLES, TUTORIALS, CHALLENGES, MASTERS, CHAPTERS, getPuzzle, createPosition, isUnlocked };

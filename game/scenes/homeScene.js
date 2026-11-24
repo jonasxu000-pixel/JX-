@@ -17,6 +17,7 @@ const { drawProgressBar } = require('../renderers/practiceRenderer');
 const { drawIcon } = require('../renderers/iconRenderer');
 const lobby = require('../renderers/lobbyRenderer');
 const puzzles = require('../../utils/puzzles');
+const matchRules = require('../../utils/matchRules');
 
 class HomeScene {
   constructor(runtime) {
@@ -182,8 +183,11 @@ class HomeScene {
     const width = this.runtime.width;
     const x = 20; const w = width - 40; const half = (w - 12) / 2;
     const ai = { x, y: layout.start, width: w, height: layout.primaryHeight };
-    const difficultyY = ai.y + (layout.tight ? 44 : (layout.compact ? 52 : 70));
     const startButton = { x: x + 12, y: ai.y + ai.height - 50, width: w - 24, height: 42 };
+    const difficultyY = Math.min(
+      ai.y + (layout.tight ? 44 : (layout.compact ? 52 : 70)),
+      startButton.y - (layout.tight ? 40 : 48),
+    );
     const puzzle = { x, y: ai.y + ai.height + layout.gap, width: w, height: layout.puzzleHeight };
     const pairY = puzzle.y + puzzle.height + layout.gap;
     const friend = { x, y: pairY, width: w, height: layout.friendHeight };
@@ -254,9 +258,9 @@ class HomeScene {
     const puzzleBoardSize = Math.min(58, actions.puzzle.height - 16);
     lobby.drawBoardVignette(ctx, atlas, { x: actions.puzzle.x + 14, y: actions.puzzle.y + (actions.puzzle.height - puzzleBoardSize * 0.76) / 2, width: puzzleBoardSize, height: puzzleBoardSize * 0.76 });
     drawLabel(ctx, '残局挑战', actions.puzzle.x + 82, actions.puzzle.y + actions.puzzle.height * 0.37, 'left', { size: width < 350 ? 18 : 20, bold: true, color: '#714716' });
-    drawLabel(ctx, '3～7 手连续攻杀', actions.puzzle.x + 82, actions.puzzle.y + actions.puzzle.height * 0.68, 'left', { size: 10, color: '#946A31', maxWidth: width - 148 });
-    const cleared = puzzles.CHALLENGES.filter(puzzle => data.puzzles[puzzle.id]).length;
-    drawLabel(ctx, `${cleared}/12`, width - 48, actions.puzzle.y + actions.puzzle.height * 0.5, 'right', { size: 10, bold: true, color: '#8A5D28' });
+    drawLabel(ctx, '入门 · 进阶攻杀 · 大师绝杀', actions.puzzle.x + 82, actions.puzzle.y + actions.puzzle.height * 0.68, 'left', { size: 10, color: '#946A31', maxWidth: width - 148 });
+    const cleared = puzzles.PUZZLES.filter(puzzle => data.puzzles[puzzle.id]).length;
+    drawLabel(ctx, `${cleared}/${puzzles.PUZZLES.length}`, width - 48, actions.puzzle.y + actions.puzzle.height * 0.5, 'right', { size: 10, bold: true, color: '#8A5D28' });
     input.addHitArea(actions.puzzle, () => manager.go('puzzleList')); lobby.pressOverlay(ctx, input, actions.puzzle);
 
     lobby.drawPlate(ctx, actions.friend, 'cream', atlas);
@@ -271,8 +275,12 @@ class HomeScene {
       drawLabel(ctx, label, rect.x + 49, rect.y + rect.height / 2, 'left', { bold: true, size: width < 350 ? 13 : 14, color: '#65583D' });
       input.addHitArea(rect, () => scene==='localGame'?manager.go('matchSetup',{mode:'local'}):manager.go(scene)); lobby.pressOverlay(ctx, input, rect);
     });
-    drawCard(ctx, { x: width / 2 - 120, y: actions.noteY - 10, width: 240, height: 20, radius: 10, fill: 'rgba(250,244,231,.9)', stroke: 'rgba(216,197,166,.7)', shadow: false });
-    drawLabel(ctx, '自由五子棋 · 黑棋先行 · 无禁手', width / 2, actions.noteY, 'center', { size: 10, color: '#76684D' });
+    const preset = matchRules.fromSettings(data.settings);
+    const ruleName = matchRules.RULE_NAMES[preset.ruleSet] || '自由五子棋';
+    const confirmLabel = data.settings.confirmMove !== false ? '双点确认落子' : '单点直接落子';
+    const noteWidth = Math.min(width - 40, 260);
+    drawCard(ctx, { x: width / 2 - noteWidth / 2, y: actions.noteY - 10, width: noteWidth, height: 20, radius: 10, fill: 'rgba(250,244,231,.9)', stroke: 'rgba(216,197,166,.7)', shadow: false });
+    drawLabel(ctx, `${ruleName} · ${confirmLabel}`, width / 2, actions.noteY, 'center', { size: 10, color: '#76684D', maxWidth: noteWidth - 16 });
     if (this.sheet === 'player') this.drawPlayerSheet(ctx, input, data);
   }
 

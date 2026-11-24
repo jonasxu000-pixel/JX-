@@ -98,7 +98,7 @@ function drawRoomCodeCard(ctx, options) {
   ctx.fillText(eyebrow, x + width / 2, y + 28);
 
   ctx.fillStyle = COLORS.ink;
-  ctx.font = '700 42px ui-monospace, "SFMono-Regular", Consolas, monospace';
+  ctx.font = '700 42px "PingFang SC", "Microsoft YaHei", ui-monospace, "SFMono-Regular", Consolas, monospace';
   ctx.fillText(roomId || '······', x + width / 2, y + 72);
 
   ctx.fillStyle = COLORS.gold;

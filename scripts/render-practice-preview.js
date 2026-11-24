@@ -71,6 +71,22 @@ const images = [
     scene.finishGame('你获胜');
   }),
 ];
+await render('ai-preview-375', 'aiGame', {}, 375, 667, scene => {
+  [[7,7,1],[7,8,2],[6,7,1],[8,8,2],[6,6,1],[5,5,2]].forEach(([r,c,p]) => { scene.board[r][c] = p; });
+  scene.lastMove = { row: 5, col: 5, piece: 2 };
+  scene.pendingMove = { row: 8, col: 6, piece: 1 };
+});
+await render('puzzles-master-375', 'puzzleList', { track: 'master' }, 375, 667);
+await render('puzzle-master-375', 'puzzleGame', { puzzleId: 'm05' }, 375, 667, scene => {
+  scene.toggleHint();
+});
+await render('puzzle-demo-375', 'puzzleGame', { puzzleId: 'm01' }, 375, 667, scene => {
+  scene.enterDemoMode();
+  scene.stepDemo(1);
+  scene.stepDemo(1);
+  scene.stepDemo(1);
+});
+await render('settings-320', 'settings', {}, 320, 568);
 await render('home-320', 'home', {}, 320, 568);
 await render('home-430', 'home', {}, 430, 932);
 await render('join-room-375','joinRoom',{},375,667);

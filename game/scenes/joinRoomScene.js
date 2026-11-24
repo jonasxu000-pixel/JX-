@@ -146,7 +146,7 @@ class JoinRoomScene {
       ctx.lineWidth = digit ? 2 : 1;
       ctx.stroke();
       ctx.fillStyle = COLORS.ink;
-      ctx.font = 'bold 26px sans-serif';
+      ctx.font = 'bold 26px "PingFang SC", "Microsoft YaHei", sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       if (digit) ctx.fillText(digit, x + slotWidth / 2, y + slotHeight / 2);

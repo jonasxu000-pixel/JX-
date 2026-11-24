@@ -17,6 +17,7 @@ function empty() {
       music: false,
       motion: true,
       vibration: false,
+      confirmMove: true,
       difficulty: 'normal',
       turnSeconds: 30,
       undoEnabled: true,
@@ -66,6 +67,7 @@ function read(wxApi) {
   data.settings.vibration = Boolean(source.settings && source.settings.vibration === true);
   data.settings.music = Boolean(source.settings && source.settings.music === true);
   data.settings.motion = !(source.settings && source.settings.motion === false);
+  data.settings.confirmMove = !(source.settings && source.settings.confirmMove === false);
   if (source.settings && source.settings.rulePresetVersion === 2) {
     const preset = require('./matchRules').fromSettings(source.settings);
     Object.assign(data.settings, {
@@ -188,6 +190,18 @@ function goals(data) {
       value: Object.keys(data.puzzles).filter((id) => /^c\d\d$/.test(id)).length,
       target: 12,
     },
+    {
+      title: '绝杀初成',
+      note: '解开 4 道大师残局',
+      value: Object.keys(data.puzzles).filter((id) => /^m\d\d$/.test(id)).length,
+      target: 4,
+    },
+    {
+      title: '残局宗师',
+      note: '解开全部 12 道大师残局',
+      value: Object.keys(data.puzzles).filter((id) => /^m\d\d$/.test(id)).length,
+      target: 12,
+    },
   ].map((goal) => ({ ...goal, done: goal.value >= goal.target }));
 }
 
@@ -199,6 +213,7 @@ function setSetting(wxApi, key, value) {
       'music',
       'motion',
       'vibration',
+      'confirmMove',
       'difficulty',
       'turnSeconds',
       'undoEnabled',

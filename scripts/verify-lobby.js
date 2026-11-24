@@ -63,6 +63,8 @@ function verifyLobbyAndSettings() {
   const practice = manager.current;
   const rect = practice.boardRect;
   practice.handleTouch(rect.x + rect.width / 2, rect.y + rect.height / 2);
+  assert(practice.pendingMove && practice.moves === 0, 'first tap must show dashed preview before placing');
+  practice.handleTouch(rect.x + rect.width / 2, rect.y + rect.height / 2);
   const previousId = practice.id; practice.onHide(); manager.go('home'); home = manager.current;
   tap(manager, home.getActionLayout().fresh);
   assert.equal(manager.current.mode,'ai'); assert.equal(manager.current.moves,0);

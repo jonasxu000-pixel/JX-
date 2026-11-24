@@ -702,6 +702,9 @@ function verifyAiTurnFlow() {
   const y = scene.boardRect.y + scene.boardRect.height / 2;
 
   runtime.manager.handleTouch({ touches: [{ clientX: x, clientY: y }] });
+  assert(scene.pendingMove && scene.board[7][7] === board.EMPTY,
+    'first tap in AI match must show pending preview before placing');
+  runtime.manager.handleTouch({ touches: [{ clientX: x, clientY: y }] });
   assert(scene.board[7][7] === board.BLACK, 'AI match must let the player place black first');
   assert(scene.aiThinking && scene.currentPlayer === board.WHITE,
     'AI match must lock the board while the AI is thinking');
@@ -742,6 +745,9 @@ function verifyLocalBoardTap() {
   const x = scene.boardRect.x + scene.boardRect.width / 2;
   const y = scene.boardRect.y + scene.boardRect.height / 2;
 
+  runtime.manager.handleTouch({ touches: [{ clientX: x, clientY: y }] });
+  assert(scene.pendingMove && scene.board[7][7] === board.EMPTY,
+    'first local board tap must show pending preview before placing');
   runtime.manager.handleTouch({ touches: [{ clientX: x, clientY: y }] });
 
   assert(scene.board[7][7] === board.BLACK, 'local board tap must place a black piece');

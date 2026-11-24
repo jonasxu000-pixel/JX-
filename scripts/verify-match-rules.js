@@ -5,7 +5,10 @@ const progress = require('../utils/progressStore');
 function tapBoard(scene, r, c) {
   const p = scene.boardRect.width * 0.08;
   const cell = (scene.boardRect.width - p * 2) / 14;
-  scene.handleTouch(scene.boardRect.x + p + c * cell, scene.boardRect.y + p + r * cell);
+  const x = scene.boardRect.x + p + c * cell;
+  const y = scene.boardRect.y + p + r * cell;
+  scene.handleTouch(x, y);
+  scene.handleTouch(x, y);
 }
 async function run() {
   const oldNow = Date.now;

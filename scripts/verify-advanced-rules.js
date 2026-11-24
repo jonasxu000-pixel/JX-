@@ -199,7 +199,10 @@ for (const [w, h] of [
 function tap(scene, r, c) {
   const padding = scene.boardRect.width * 0.08,
     cell = (scene.boardRect.width - padding * 2) / 14;
-  scene.handleTouch(scene.boardRect.x + padding + c * cell, scene.boardRect.y + padding + r * cell);
+  const x = scene.boardRect.x + padding + c * cell;
+  const y = scene.boardRect.y + padding + r * cell;
+  scene.handleTouch(x, y);
+  scene.handleTouch(x, y);
 }
 const manager = test.runtime.manager;
 manager.go('localGame', { rules: { turnSeconds: 0, ruleSet: 'renju', openingCenter: true } });
@@ -270,6 +273,25 @@ for (let i = 0; i < 100; i += 1) {
   gomoku.adjudicate(b, 7, 7, 1, 'renju');
   maximum = Math.max(maximum, performance.now() - start);
 }
+const { drawBoard } = require('../game/renderers/boardRenderer');
+const overlineBoard = fresh();
+[2, 3, 4, 5, 6, 7].forEach((c) => { overlineBoard[7][c] = 1; });
+const strokes = [];
+const mockDrawCtx = new Proxy(
+  {
+    stroke() { strokes.push(this.strokeStyle); },
+    createRadialGradient() { return { addColorStop() {} }; },
+    createLinearGradient() { return { addColorStop() {} }; },
+  },
+  { get(t, k) { return k in t ? t[k] : () => {}; } },
+);
+drawBoard(mockDrawCtx, overlineBoard, { row: 7, col: 5, piece: 1 }, { x: 0, y: 0, width: 320, height: 320 }, { ruleSet: 'exact', showWinLine: true });
+assert(!strokes.includes('#EAC87C'), 'exact mode must not draw winning gold line on overline');
+strokes.length = 0;
+const exactFiveBoard = fresh();
+[3, 4, 5, 6, 7].forEach((c) => { exactFiveBoard[7][c] = 1; });
+drawBoard(mockDrawCtx, exactFiveBoard, { row: 7, col: 7, piece: 1 }, { x: 0, y: 0, width: 320, height: 320 }, { ruleSet: 'exact', showWinLine: true });
+assert(strokes.includes('#EAC87C'), 'exact mode must draw winning gold line on exact five');
 console.log(
-  `Advanced rules, genuine/false threes, foul precedence, migration, color recovery and folded UI verified; desktop maximum ${maximum.toFixed(2)} ms`,
+  `Advanced rules, genuine/false threes, foul precedence, exact/renju win-line guards, migration, color recovery and folded UI verified; desktop maximum ${maximum.toFixed(2)} ms`,
 );

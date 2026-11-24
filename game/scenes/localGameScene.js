@@ -29,6 +29,8 @@ class LocalGameScene {
     this.active = false;
     this.undoUsed = { 1: 0, 2: 0 };
     this.pendingUndo = null;
+    this.pendingMove = null;
+    this.confirmMoveEnabled = progress.read(runtime.wx).settings.confirmMove !== false;
     this.winnerPiece = null;
     this.clock = matchRules.createTicker(() => {
       if (!this.active || this.gameOver) return false;
@@ -41,14 +43,17 @@ class LocalGameScene {
 
   onEnter() {
     this.active = true;
+    this.confirmMoveEnabled = progress.read(this.runtime.wx).settings.confirmMove !== false;
     this.beginTurn();
   }
   onHide() {
     this.active = false;
+    this.pendingMove = null;
     this.clock.stop();
   }
   onResume() {
     this.active = true;
+    this.confirmMoveEnabled = progress.read(this.runtime.wx).settings.confirmMove !== false;
     if (!this.gameOver) this.beginTurn();
   }
   beginTurn() {
@@ -62,7 +67,9 @@ class LocalGameScene {
     this.gameOver = true;
     this.resultText = `${board.pieceName(this.currentPlayer)}超时，${board.pieceName(this.winnerPiece)}获胜`;
     this.pendingUndo = null;
+    this.pendingMove = null;
     this.clock.stop();
+    if (this.runtime.feedback && this.runtime.feedback.result) this.runtime.feedback.result('win');
     this.resultReveal.show();
     this.runtime.manager.render();
     return true;
@@ -70,6 +77,7 @@ class LocalGameScene {
 
   onExit() {
     this.active = false;
+    this.pendingMove = null;
     this.clock.stop();
     this.resultReveal.dispose();
   }
@@ -83,7 +91,9 @@ class LocalGameScene {
       boardTop,
       this.runtime.height - boardTop - 112 - Math.max(0, (this.runtime.bottomInset || 18) - 18),
     );
-    const statusText = this.resultText || `轮到${board.pieceName(this.currentPlayer)}落子`;
+    const statusText = this.resultText || (this.pendingMove
+      ? `已预选 ${boardRenderer.formatCoord(this.pendingMove.row, this.pendingMove.col)} · 再点确认`
+      : `轮到${board.pieceName(this.currentPlayer)}落子`);
 
     drawLabel(ctx, '同屏双人对战', 20, safeTop + 14, 'left', { bold: true, size: 21 });
     drawPill(ctx, {
@@ -113,7 +123,12 @@ class LocalGameScene {
       input.addHitArea({ x: width - 114, y: safeTop, width: 94, height: 38 }, () =>
         manager.go('matchSetup', { mode: 'local', rules: this.rules }),
       );
-    boardRenderer.drawBoard(ctx, this.board, this.lastMove, this.boardRect);
+    boardRenderer.drawBoard(ctx, this.board, this.lastMove, this.boardRect, {
+      pendingMove: !this.gameOver && !this.pendingUndo ? this.pendingMove : null,
+      ruleSet: this.rules.ruleSet,
+      openingCenter: this.rules.openingCenter,
+      showWinLine: this.gameOver && this.winnerPiece !== null,
+    });
     drawLabel(
       ctx,
       `${matchRules.RULE_NAMES[this.rules.ruleSet]} · 黑棋先行${this.rules.openingCenter ? ' · 首手天元' : ''}`,
@@ -201,7 +216,13 @@ class LocalGameScene {
     if (this.checkTimeout()) return;
     if (this.gameOver || this.pendingUndo || !this.boardRect) return;
     const grid = boardRenderer.hitTest(x, y, this.boardRect);
-    if (!grid || this.board[grid.row][grid.col] !== board.EMPTY) return;
+    if (!grid || this.board[grid.row][grid.col] !== board.EMPTY) {
+      if (this.pendingMove) {
+        this.pendingMove = null;
+        this.runtime.manager.render();
+      }
+      return;
+    }
 
     const piece = this.currentPlayer;
     const openingError = gomokuRules.openingError(
@@ -212,9 +233,20 @@ class LocalGameScene {
       this.rules,
     );
     if (openingError) {
+      this.pendingMove = null;
       if (this.runtime.wx.showToast)
         this.runtime.wx.showToast({ title: openingError, icon: 'none' });
+      this.runtime.manager.render();
       return;
+    }
+    if (this.confirmMoveEnabled) {
+      if (!this.pendingMove || this.pendingMove.row !== grid.row || this.pendingMove.col !== grid.col) {
+        this.pendingMove = { row: grid.row, col: grid.col, piece };
+        if (this.runtime.feedback && this.runtime.feedback.select) this.runtime.feedback.select();
+        this.runtime.manager.render();
+        return;
+      }
+      this.pendingMove = null;
     }
     this.board[grid.row][grid.col] = piece;
     this.lastMove = { row: grid.row, col: grid.col, piece };
@@ -251,6 +283,9 @@ class LocalGameScene {
 
     if (this.gameOver) {
       this.clock.stop();
+      if (this.runtime.feedback && this.runtime.feedback.result) {
+        this.runtime.feedback.result(this.winnerPiece ? 'win' : 'draw');
+      }
       this.resultReveal.show();
     }
     this.runtime.manager.render();
@@ -319,6 +354,7 @@ class LocalGameScene {
     this.deadline = 0;
     this.undoUsed = { 1: 0, 2: 0 };
     this.pendingUndo = null;
+    this.pendingMove = null;
     this.winnerPiece = null;
     this.beginTurn();
     this.runtime.manager.render();
@@ -335,6 +371,7 @@ class LocalGameScene {
       this.undoUsed[last.piece] >= this.rules.undoLimit
     )
       return;
+    this.pendingMove = null;
     const now = Date.now();
     this.undoUsed[last.piece] += 1;
     this.pendingUndo = {
@@ -349,6 +386,7 @@ class LocalGameScene {
   }
   respondUndo(accept) {
     if (this.gameOver || this.checkTimeout() || !this.pendingUndo) return;
+    this.pendingMove = null;
     const pending = this.pendingUndo;
     this.pendingUndo = null;
     if (accept && Date.now() < pending.expiresAt) {

@@ -119,6 +119,7 @@ function drawResultOverlay(ctx, input, options) {
     onAvatarReady,
     primaryAction,
     secondaryAction,
+    tertiaryAction,
   } = options;
   const eased = easeOutCubic(clamp(progress, 0, 1));
   const overlayAlpha = clamp(eased * 1.4, 0, 1);
@@ -212,16 +213,43 @@ function drawResultOverlay(ctx, input, options) {
     disabled: primaryAction.disabled,
     onTap: interactive ? primaryAction.onTap : null,
   });
-  drawButton(ctx, input, {
-    x: layout.cardX + 24,
-    y: layout.cardY + 365,
-    width: layout.cardWidth - 48,
-    height: 42,
-    text: secondaryAction.text,
-    variant: 'secondary',
-    disabled: secondaryAction.disabled,
-    onTap: interactive ? secondaryAction.onTap : null,
-  });
+  if (tertiaryAction) {
+    const gap = 10;
+    const halfWidth = (layout.cardWidth - 48 - gap) / 2;
+    drawButton(ctx, input, {
+      x: layout.cardX + 24,
+      y: layout.cardY + 365,
+      width: halfWidth,
+      height: 42,
+      text: secondaryAction.text,
+      fontSize: 13,
+      variant: 'secondary',
+      disabled: secondaryAction.disabled,
+      onTap: interactive ? secondaryAction.onTap : null,
+    });
+    drawButton(ctx, input, {
+      x: layout.cardX + 24 + halfWidth + gap,
+      y: layout.cardY + 365,
+      width: halfWidth,
+      height: 42,
+      text: tertiaryAction.text,
+      fontSize: 13,
+      variant: 'gold',
+      disabled: tertiaryAction.disabled,
+      onTap: interactive ? tertiaryAction.onTap : null,
+    });
+  } else {
+    drawButton(ctx, input, {
+      x: layout.cardX + 24,
+      y: layout.cardY + 365,
+      width: layout.cardWidth - 48,
+      height: 42,
+      text: secondaryAction.text,
+      variant: 'secondary',
+      disabled: secondaryAction.disabled,
+      onTap: interactive ? secondaryAction.onTap : null,
+    });
+  }
 
   ctx.restore();
 }
